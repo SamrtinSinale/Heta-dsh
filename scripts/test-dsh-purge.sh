@@ -60,6 +60,7 @@ build_case() {
   echo "用户数据" > "$base/src/precious"
   echo x > "$TARGET/opt/keep"
   mount --bind "$base/src" "$TARGET/mnt"
+  # 注意：测试用的目标路径**不得含 `&` 或 `#`** —— sed 的替换串会静默改写错。
   sed "s#$PLACEHOLDER#$TARGET#g" "$GENERATED" > "$WORK/$name.sh"
 }
 
@@ -112,6 +113,36 @@ out="$(bash "$WORK/shallow.sh" 2>&1)"; code=$?
 [ "$code" -ne 0 ] && ok "拒绝执行（退出码 $code）" || bad "浅路径没被拦下"
 [ -e "$SHALLOW/f" ] && ok "浅路径目录没被删" || bad "浅路径目录被删了"
 rm -rf "$SHALLOW"
+
+echo "⑤ 挂载点名字带空格（mountinfo 会写成 \040）：必须拒绝删除，源数据完好"
+build_case escaped
+mkdir -p "$WORK/escaped/src2" "$TARGET/mnt with space"
+echo "带空格的用户数据" > "$WORK/escaped/src2/precious2"
+mount --bind "$WORK/escaped/src2" "$TARGET/mnt with space"
+out="$(bash "$WORK/escaped.sh" 2>&1)"; code=$?
+[ "$code" -ne 0 ] && ok "拒绝执行（退出码 $code）" || bad "带转义挂载点却退出 0"
+case "$out" in
+  *HETA_PURGE_ABORT*|*HETA_UMOUNT_FAILED*) ok "输出里有拒绝理由" ;;
+  *) bad "没有拒绝理由：$out" ;;
+esac
+[ -e "$WORK/escaped/src2/precious2" ] && ok "挂载源数据完好" \
+  || bad "【挂载源数据被删了】被当成 ORPHAN 放过了"
+[ -e "$TARGET/opt/keep" ] && ok "目标里的文件没被删" || bad "目标里的文件被删了"
+umount -l "$TARGET/mnt with space" 2>/dev/null || true
+
+echo "⑥ 目标路径自身需要转义（guard ①）：必须拒绝，且一个都不删"
+build_case escaped_target
+SPACED="$WORK/escaped_target/link/dsh-runtime with space"
+mkdir -p "$SPACED/opt"
+echo keep > "$SPACED/opt/keep"
+sed "s#$PLACEHOLDER#$SPACED#g" "$GENERATED" > "$WORK/escaped_target.sh"
+out="$(bash "$WORK/escaped_target.sh" 2>&1)"; code=$?
+[ "$code" -ne 0 ] && ok "拒绝执行（退出码 $code）" || bad "目标路径带空格却退出 0"
+case "$out" in
+  *HETA_PURGE_ABORT*) ok "输出里有 HETA_PURGE_ABORT" ;;
+  *) bad "没有 HETA_PURGE_ABORT：$out" ;;
+esac
+[ -e "$SPACED/opt/keep" ] && ok "目标里的文件没被删" || bad "目标里的文件被删了"
 
 echo
 if [ "$fails" -gt 0 ]; then
