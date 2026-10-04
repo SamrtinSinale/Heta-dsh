@@ -14,6 +14,8 @@ import io.github.mangi.eta.agent.dsh.DshLiveEntry
 import io.github.mangi.eta.agent.dsh.DshLiveInventory
 import io.github.mangi.eta.agent.dsh.DshLiveInventoryCache
 import io.github.mangi.eta.agent.dsh.DshPluginInventory
+import io.github.mangi.eta.agent.dsh.DshPresetPlane
+import io.github.mangi.eta.agent.dsh.DshPresetSelection
 import io.github.mangi.eta.agent.dsh.DshProfileStore
 import io.github.mangi.eta.agent.dsh.DshProfileWrite
 import io.github.mangi.eta.agent.dsh.DshRowState
@@ -120,6 +122,16 @@ internal class DshExtensionsStore(
     /** bundle 的本地改写：名字 → 用户在界面上选 / 禁的结果（同上，写完不再重读清单）。 */
     private val pendingBundles = mutableStateMapOf<String, Boolean>()
 
+    /**
+     * 当前选中的预设（[DshPresetPlane] 里那四个之一）。
+     *
+     * 它是**下一轮 run** 会用的那个：覆盖层每轮重新生成，`config.default` 就取这个值。活清单
+     * 里的 `isDefault` 要等下一轮 run 才会跟着变，所以页面的"新任务默认"标记看的是这里，不是
+     * 对方报的那个 —— 否则用户刚点完会看到"没生效"。
+     */
+    var selectedPresetId by mutableStateOf(DshPresetPlane.DEFAULT_PRESET)
+        private set
+
     /** 结果提示；写入被拒绝时它就是数据层给的理由原文。 */
     var message by mutableStateOf<String?>(null)
         private set
@@ -127,6 +139,8 @@ internal class DshExtensionsStore(
         private set
 
     init {
+        // 偏好读失败不该拦着读清单：选不中就用官方默认值。
+        selectedPresetId = DshPresetPlane.selectedFor(appContext)
         load(explicit = false)
     }
 
@@ -185,7 +199,10 @@ internal class DshExtensionsStore(
                 val profileDir = DshProfileStore.forRuntime(runtimeRoot).profileDir
                 if (!profileDir.canWrite()) DshRuntimeInstaller.handProfileToApp(profileDir)
                 // profile 名两边都靠默认值（acp）：各写一遍反而会漂移。
-                DshPluginInventory(runtimeRoot).read()
+                DshPluginInventory(
+                    runtimeRoot = runtimeRoot,
+                    presetManagedRowIds = DshPresetPlane.managedRowIdsFor(appContext),
+                ).read()
             }
         }
         result.fold(
@@ -307,6 +324,34 @@ internal class DshExtensionsStore(
                 DshLiveInventoryCache.invalidate()
             },
         )
+    }
+
+    /**
+     * 选中一个预设：下一次开对话生效。
+     *
+     * 写的是 App 的偏好、**不是**补丁层：`config.default` 由覆盖层承载，而覆盖层每轮 run 重新
+     * 生成（见 [DshPresetPlane]），所以这里只记住 id，别的什么都不用动 —— 与这一页其它改动同一句
+     * 语义（下次开对话才生效）。也**不重探**：活清单里那份 roster 的 `isDefault` 是这一轮 run 的
+     * 事实，改不了；页面按本地选择显示"新任务默认"。
+     */
+    fun selectPreset(id: String) {
+        if (id == selectedPresetId) {
+            message = appContext.getString(R.string.extensions_message_unchanged)
+            messageIsError = false
+            return
+        }
+        // 预设不分文件层的写路径：这里不动 profile 补丁层，所以不走 write()（那个路径会去修 owner、
+        // 锁 working）。commit() 是一次很小的磁盘写，放 IO 里。
+        scope.launch {
+            val written = withContext(Dispatchers.IO) { DshPresetSelection.select(appContext, id) }
+            if (!written) {
+                fail(R.string.extensions_write_failed, IllegalStateException("预设选择没写进偏好"))
+                return@launch
+            }
+            selectedPresetId = id
+            message = appContext.getString(R.string.extensions_message_saved)
+            messageIsError = false
+        }
     }
 
     /**

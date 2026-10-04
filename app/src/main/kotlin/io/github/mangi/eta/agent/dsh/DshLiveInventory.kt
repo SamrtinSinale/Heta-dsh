@@ -59,6 +59,14 @@ internal data class DshLivePreset(
     val id: String,
     val name: String,
     val isDefault: Boolean,
+    /**
+     * 挂不起来的原因（官方 `AgentPresetComposition.broken`），挂得起来就是 null。
+     *
+     * **挂不起来时 [rows] 一定是空的**（官方那条字段的说明就是 "empty when the preset is
+     * broken"）。所以界面不能只看"有没有行"：那会把坏预设显示成一个空预设，用户选它、然后
+     * 什么都不会发生。有 [broken] 就必须把原因摆出来，并且**不许选它**。
+     */
+    val broken: String?,
     val rows: List<DshLivePresetRow>,
 )
 
@@ -70,7 +78,13 @@ internal data class DshLivePreset(
  */
 internal sealed interface DshLiveInventory {
 
-    /** 读到了。[presets] 为空是常态：随包运行时里没有 `agentPresets` 服务的发布者。 */
+    /**
+     * 读到了。
+     *
+     * [presets] 为空**不是**常态了：资产里已经装上 `dsh-agent-preset-registry`，补丁层也有四份
+     * 官方声明（见 [DshPresetPlane]），所以正常装机上这里会有四个预设。为空只可能出现在
+     * "预设资产没装进去"或"注册表挂了"这两种情况下 —— 那时页面照旧只显示插件行。
+     */
     data class Ready(val entries: List<DshLiveEntry>, val presets: List<DshLivePreset>) : DshLiveInventory
 
     /** 没读到。[reason] 是可读的原因，界面原样显示（必要时会被 [DshInventoryProbe] 附上 stderr 尾巴）。 */
@@ -104,6 +118,7 @@ internal object DshLiveInventoryCodec {
     private const val ID = "id"
     private const val NAME = "name"
     private const val IS_DEFAULT = "isDefault"
+    private const val BROKEN = "broken"
     private const val ROWS = "rows"
 
     fun parse(stdout: String): DshLiveInventory {
@@ -168,6 +183,8 @@ internal object DshLiveInventoryCodec {
                 id = id,
                 name = textOrNull(item, NAME) ?: id,
                 isDefault = booleanOrNull(item, IS_DEFAULT) ?: false,
+                // 缺这个键 = 官方说的 "absent when rows answers" = 挂得起来。
+                broken = textOrNull(item, BROKEN),
                 rows = readPresetRows(item.optJSONArray(ROWS)),
             )
         }

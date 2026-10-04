@@ -29,6 +29,16 @@ internal data class DshRuntimeConfig(
     val workingDirectory: String = DshRuntimeInstaller.WORKSPACE_IN_ROOT,
     /** App 的技能库目录；会 bind 进 chroot，供 dsh 读取和写入技能。 */
     val skillsDirectory: String = "",
+    /**
+     * 预设平面的覆盖层正文（Host 行 + 注册表 + 四份官方声明 + agent 平面让位）。
+     *
+     * 由 [DshPresetPlane] 从 assets 拼出来，`resolveBuiltin` 装配时读一次。空串表示"这一份安装
+     * 没有预设资产" —— 那时候整段不写，运行时保持 dsh-base 原样（根上一套工具、没有预设），
+     * 也就是今天的行为：**降级必须是安全的**，不能出现"注册表在、工具行却被关了"的中间态。
+     */
+    val presetPlane: String = "",
+    /** join 插件全文（写进 root，覆盖层里用相对名引用）。空串表示不装那一跳。 */
+    val presetJoinPlugin: String = "",
 ) {
     /**
      * ACP 进程自身的宿主工作目录。
@@ -86,8 +96,17 @@ internal data class DshRuntimeConfig(
                     append("    personaPrefix: ").append(JSONObject.quote(PERSONA_PREFIX)).append('\n')
                     append("    personaSuffix: |\n")
                     personaSuffixLines().forEach { line -> append("      ").append(line).append('\n') }
+                    // 预设平面排在最后：它是优先级最高的一层，也是唯一随"当前选中哪个预设"变化
+                    // 的一段。`trimEnd()` 后再补一个换行 —— 资产文件有没有尾换行都成立（同
+                    // 模型目录那段踩过的坑：不给足换行会把两条 YAML 行粘成一行，dsh 直接
+                    // YAMLException 退出，Heta 只看到 protocol-eof）。
+                    if (presetPlane.isNotBlank()) {
+                        append('\n')
+                        append(presetPlane.trimEnd()).append('\n')
+                    }
                 }
             )
+            writeJoinPlugin()
             OVERLAY_IN_ROOT
         }.getOrElse { throwable ->
             Log.w(TAG, "profile overlay write failed", throwable)
@@ -203,6 +222,31 @@ internal data class DshRuntimeConfig(
             append(' ').append(DshRuntimeInstaller.DSH_ENTRY_IN_ROOT)
             append(" --profile ").append(ACP_PROFILE)
             if (overlay != null) append(" --patch ").append(shellQuote(overlay))
+        }
+    }
+
+    /**
+     * 把 join 插件落到 `<root>/opt/dsh/heta-preset-join.mjs`。
+     *
+     * 位置就是覆盖层所在目录：覆盖层里那一行写的是相对名 `./heta-preset-join.mjs`，dsh 按
+     * **覆盖层文件所在目录**解析它（同清单桥那条注释）。绝对路径要跟着 chroot 内外两套路径走，
+     * 更容易错。
+     *
+     * 权限 0644：dsh 在 chroot 里以 root 读它。写失败不阻断启动 —— 那只会让会话拿不到预设
+     * （join 插件不在，注册表仍在，新会话就不绑定任何预设）。
+     */
+    private fun writeJoinPlugin() {
+        if (presetJoinPlugin.isBlank()) return
+        runCatching {
+            val file = File(rootfsPath, JOIN_RELATIVE)
+            file.parentFile?.mkdirs()
+            file.writeText(presetJoinPlugin)
+            file.setReadable(true, false)
+            file.setWritable(false, false)
+            file.setWritable(true, true)
+            file.setExecutable(false, false)
+        }.getOrElse { throwable ->
+            Log.w(TAG, "preset join plugin write failed", throwable)
         }
     }
 
@@ -369,6 +413,8 @@ internal data class DshRuntimeConfig(
         private const val MCP_SERVER_NAME = "heta"
         private const val MCP_TRANSPORT_HTTP = "http"
         private const val OVERLAY_RELATIVE = "opt/dsh/heta-run-overlay.patch.yml"
+        /** join 插件与覆盖层必须同目录（覆盖层里是相对名）。 */
+        private const val JOIN_RELATIVE = "opt/dsh/heta-preset-join.mjs"
         private const val OVERLAY_IN_ROOT = "/opt/dsh/heta-run-overlay.patch.yml"
         private const val CREDENTIALS_RELATIVE = "opt/dsh/heta-run-env.sh"
         /** dsh 自己的会话目录；App 侧那份有 128 条上限，这份没有，只能按年龄清。 */
@@ -397,13 +443,28 @@ internal data class DshRuntimeConfig(
         ): DshRuntimeConfig? {
             if (!DshRuntimeInstaller.isReady(context)) return null
             runCatching { SkillRuntime.skillsRoot(context).mkdirs() }
-            return DshRuntimeConfig(
+            // 预设那两样都从 assets 装；读不出来时各自返回空串 ⇒ 覆盖层里整段不写，运行时
+            // 就退回 dsh-base 原样（根上有工具、没有预设），也就是今天的行为。降级必须是**整段**
+            // 的：见 DshPresetPlane.overlayFor —— 绝不能只剩"agent 平面被关了"。
+            val base = DshRuntimeConfig(
                 rootfsPath = DshRuntimeInstaller.runtimeDirectory(context).absolutePath,
                 providerRoute = providerRoute,
                 model = model,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
                 skillsDirectory = SkillRuntime.skillsRoot(context).absolutePath,
+            )
+            // 部署人格后缀（身份句 + 技能库索引 + 工作目录）必须由**同一处**生成，再塞进预设的
+            // `persona` 行：预设一开，挂在部署级 system-prompt 上的那一段就被 persona 行遮蔽了，
+            // 模型再也看不到它（端到端实测：system 里没有身份句、也没有技能库索引，技能于是永远
+            // 不会被用上）。所以先用一份"没有预设"的配置算出那段文本，再连同平面一起装回去。
+            return base.copy(
+                presetPlane = DshPresetPlane.overlayFor(
+                    context,
+                    DshPresetPlane.selectedFor(context),
+                    base.personaSuffixLines(),
+                ),
+                presetJoinPlugin = DshPresetPlane.joinPluginFor(context),
             )
         }
 

@@ -26,7 +26,12 @@ internal object DshRuntimeInstaller {
     private const val ROOT_DIR_NAME = "dsh-runtime"
     private const val READY_MARKER = ".runtime-ready"
     /** 更换 dsh-runtime.tar.xz 时必须递增，确保已安装 APK 重新解包。 */
-    private const val REVISION = 8
+    /**
+     * 资产修订号：**资产内容变了就必须递增**，它是 `isReady` 判定"装的是不是这一份资产"
+     * 的唯一依据（见 [isReady]）。9 这一版装进了官方 agent 预设要用的 12 个包
+     * （见 `scripts/build-dsh-runtime.py` 的 PRESET_PACKAGES）。
+     */
+    private const val REVISION = 9
 
     /** 解包先落在这个兄弟目录，验完再整体改名就位（避免脏目录被当成已就绪）。 */
     private const val STAGING_DIR_NAME = "$ROOT_DIR_NAME.installing"

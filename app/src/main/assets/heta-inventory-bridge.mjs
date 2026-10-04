@@ -97,6 +97,20 @@ function patchIdField(value) {
   return typeof value === 'string' && value.length > 0 ? { patchId: value } : {}
 }
 
+/**
+ * 预设挂不起来的原因 → 输出里那个键。
+ *
+ * **这个字段不能丢**：官方 `AgentPresetComposition.broken`（`composition-inventory.d.ts:41`）
+ * 写着 "Why this preset's rows cannot be read; absent when rows answers"，而 `rows` 在挂载
+ * 失败时是**空的**（同文件 43 行："empty when the preset is broken"）。丢了它，App 看到的就是
+ * "有一个预设、一行都没有" —— 一个看起来可选、选了什么都不会发生的预设。实测过一次：
+ * standard 预设因为我们没补那条 Host 行而挂不起来，桥照样报 `hasPresets: true` + 一堆行
+ *（那是退回声明文件的形态），页面上完全看不出它坏了。
+ */
+function brokenField(value) {
+  return typeof value === 'string' && value.length > 0 ? { broken: value } : {}
+}
+
 /** 照抄官方 `readPluginInventory` 的条目投影与预设投影（外加 App 开关要的 `patchId`）。 */
 async function readInventory(ctx) {
   const entries = []
@@ -129,6 +143,7 @@ async function readPresets(presets) {
     id: composition.id,
     name: composition.name ?? composition.id,
     isDefault: composition.isDefault === true,
+    ...brokenField(composition.broken),
     rows: (composition.rows ?? []).map(({ fiberState, ...row }) => ({
       ...row,
       fiberPhase: phaseOfState(fiberState),

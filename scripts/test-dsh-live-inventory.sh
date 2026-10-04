@@ -80,6 +80,10 @@ fi
 echo "② 把桥资产放进 <root>/opt/dsh/（覆盖层里的相对名就是按这个目录解析的）"
 mkdir -p "$ROOT/opt/dsh"
 cp -f "$BRIDGE" "$ROOT/opt/dsh/heta-inventory-bridge.mjs" || { echo "FAIL: 桥拷不进去"; exit 1; }
+# 预设那一跳的插件也在 root 里（覆盖层里是相对名）。探针里它不会被触发，但资产缺席会让
+# "真启动有的东西探针没有"成为一套静默差异，所以照拷。
+JOIN="$REPO/app/src/main/assets/heta-preset-join.mjs"
+[ -f "$JOIN" ] && cp -f "$JOIN" "$ROOT/opt/dsh/heta-preset-join.mjs"
 
 OUT="$TMP/probe.out"
 ERR="$TMP/probe.err"

@@ -38,6 +38,14 @@ import org.json.JSONObject
 internal class DshPluginInventory(
     private val runtimeRoot: File,
     private val profile: String = "acp",
+    /**
+     * 被预设接管的行 id（来自 `assets/heta-presets/plane-disable.patch.yml`）。
+     *
+     * 这些行在覆盖层里每轮 run 都被按回 `disabled: true`，所以单独开关它们**不会有任何效果**；
+     * 与其让用户点了没反应，不如在那一行上把原因说清楚。默认空集合：单测与"没有预设资产"的
+     * 情况下行为不变。
+     */
+    private val presetManagedRowIds: Set<String> = emptySet(),
 ) {
 
     private val profileDir: File = File(runtimeRoot, "root/.dsh/profiles/$profile")
@@ -171,6 +179,8 @@ internal class DshPluginInventory(
                 readOnlyReason = when {
                     it.moduleName in PROTECTED_MODULES -> "dsh 的管理/入口模块，关掉运行时自己就起不来"
                     it.moduleName == null -> "这一行没有模块名，定位不到它是哪个插件"
+                    // 放在最后：官方那 8 个管理模块属于"关掉就起不来"，理由更硬，先报那一个。
+                    it.patchId in presetManagedRowIds -> "这一行由预设统一管理，不能单独开关"
                     else -> null
                 },
             )

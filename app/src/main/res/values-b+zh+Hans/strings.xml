@@ -1368,4 +1368,17 @@
   <string name="extensions_preset_default">默认</string>
   <string name="extensions_preset_conditional">视条件而定</string>
   <string name="extensions_preset_condition">条件</string>
+  <string name="extensions_preset_intro">选择 Agent 的工具和工作方式。日常任务用「标准模式」，扩展 DSH 的能力用「创造模式」。</string>
+  <string name="extensions_preset_standard_name">标准模式</string>
+  <string name="extensions_preset_standard_summary">处理代码、文件和资料，适合大多数任务。Agent 会按需使用检索、编辑和终端等工具。</string>
+  <string name="extensions_preset_ptc_name">PTC 模式</string>
+  <string name="extensions_preset_ptc_summary">包含标准模式的所有能力，更适合批量调用工具，并对结果进行筛选、整理、去重、统计或汇总的任务。</string>
+  <string name="extensions_preset_minimal_name">极简模式</string>
+  <string name="extensions_preset_minimal_summary">Agent 仅使用终端工具完成任务，适合测试和对比其基础表现。</string>
+  <string name="extensions_preset_cordis_name">创造模式</string>
+  <string name="extensions_preset_cordis_summary">用对话定制 DSH：让 Agent 编写插件，添加新功能或界面；也能组合工具和提示词，创建自己的模式。</string>
+  <string name="extensions_preset_in_use">新任务默认</string>
+  <string name="extensions_preset_set_default">设为新任务默认</string>
+  <string name="extensions_preset_broken">加载失败</string>
+  <string name="extensions_preset_broken_summary">这个预设现在加载不了：%1$s</string>
 </resources>

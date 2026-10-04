@@ -1,0 +1,43 @@
+# 官方 Web 那条 Host 行：`dsh-tool-subagent` 的 model-selection-settings 子路径。
+#
+# 原文出自 @deepseek-ai/dsh-web-app 的 cordis.patch.yml：
+#   # Host-owned opt-in sampled when a new Web session receives its preset
+#   # delegation tools. The Plugins page edits this settings namespace.
+#   - id: subagent-model-selection-settings
+#     name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
+#
+# 它是**行**而不是包：`./model-selection-settings` 就在已经装好的 dsh-tool-subagent 的
+# exports 里（lib/model-selection-settings.js）。dsh-base/dsh-acp-app 没有这一行，而
+# standard/ptc/cordis 预设里的 tool-subagent 行带 `modelSelectionSettings: true`，挂载时
+# 立刻 `ctx.get("subagentModelSelection")`、取不到就抛错，注册表审计一条失败即整体拒绝
+# —— 表现就是"预设列出来了、但一行都没挂上"。
+#
+# 它必须排在预设声明之前（官方也排在它们之前）。
+
+- insert:
+    - id: subagent-model-selection-settings
+      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
+
+# Heta 自己的那一跳：官方把"会话 → 预设"这次 select 放在 Web 浏览器半边
+# （dsh-client-ui-agent-preset/lib/client.js 的 remote.agentPresets.select(session.id, staged)），
+# ACP 侧的 bundle 里对 agentPresets 零命中，所以没人给会话绑预设。见 heta-preset-join.mjs。
+- insert:
+    - id: heta-preset-join
+      name: ./heta-preset-join.mjs
+
+# cordisInspect 的两个 Host 行 —— 逐字照抄 @deepseek-ai/dsh-web-app 的 cordis.patch.yml:150-157。
+#
+# 少了它们，`cordis`（创造模式）预设里的 `tool-cordis` 行会一直
+# "waiting for cordisInspect"，而注册表审计一条不过就整体拒绝挂载
+# （dsh-agent-preset-registry/lib/index.js:272-273）—— 页面上那个预设会显示「加载失败」。
+# 实测过：只装 @deepseek-ai/dsh-cordis-host-runner 这个**包**不够，还得有这两**行**。
+#
+# 官方原文的注释解释了为什么要放在这里（而不是每份预设里）：
+#   # The Host inspect providers are process-global: the registry rejects a
+#   # duplicate id, so they register here once and every preset's `tool-cordis`
+#   # row reads them.
+- insert:
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
+    - id: cordis-inspect-providers
+      name: '@deepseek-ai/dsh-tool-cordis/host'

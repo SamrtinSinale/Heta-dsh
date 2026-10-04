@@ -26,10 +26,34 @@ class DshInventoryProbeScriptTest {
     /** 只建一次：`newFolder` 同名调第二次会抛。 */
     private val runtimeRoot: File by lazy { temporaryFolder.newFolder("dsh-runtime") }
 
+    /**
+     * 资产读成文本：单测的工作目录是 `app/`，所以与生产 `Context.assets` 读的是**同一个文件**。
+     *
+     * 这条很重要：`scripts/test-dsh-live-inventory.sh` 在 CI 里跑的就是这里导出的脚本，于是
+     * CI 会连带把**预设平面**（Host 行 / 注册表 / 四份官方声明 / agent 平面让位）一起验掉 ——
+     * 而不是验一个"没有预设的世界"。
+     */
+    private fun asset(path: String): String = File("src/main/assets", path).readText()
+
+    /** 一份**有辨识度**的假人格后缀：注入逻辑有没有生效，看它在不在覆盖层里就够了。 */
+    private val deploymentSuffix = listOf(
+        "HETA-PROBE-IDENTITY",
+        "",
+        "Your working directory is {{cwd}}.",
+        "HETA-PROBE-SKILLS",
+    )
+
+    private fun presetPlane(): String = DshPresetPlane.overlay(
+        { path -> asset(path) },
+        DshPresetPlane.DEFAULT_PRESET,
+        deploymentSuffix,
+    )
+
     private fun script(): String = DshInventoryProbe.probeScript(
         runtimeRoot = runtimeRoot,
         pathValue = DshRuntimeConfig.PATH_IN_ROOT,
         permissionMode = "danger-full-access",
+        presetPlane = presetPlane(),
     )
 
     @Test
@@ -121,10 +145,80 @@ class DshInventoryProbeScriptTest {
             script.contains("    - id: heta-inventory-bridge\n      name: ./heta-inventory-bridge.mjs\n"),
         )
         // heredoc 必须干净收尾：覆盖层那段自带换行，分隔符才落在行首。
+        // 桥之后还接着预设平面，所以"桥那一行紧跟着分隔符"不再成立 —— 判据是**分隔符自己
+        // 落在行首**（前面是换行，后面也是换行），而不是它前面恰好是桥。
         assertTrue(
-            "heredoc 分隔符被粘在别的内容后面：\n$script",
-            script.contains("      name: ./heta-inventory-bridge.mjs\nHETA_OVERLAY\n"),
+            "heredoc 分隔符没落在行首：\n$script",
+            script.contains("\nHETA_OVERLAY\n"),
         )
+        val overlayText = script.substringAfter("<<'HETA_OVERLAY'\n").substringBefore("\nHETA_OVERLAY\n")
+        assertTrue("覆盖层里桥那一行不对：\n$overlayText", overlayText.contains("      name: ./heta-inventory-bridge.mjs\n"))
+    }
+
+    /**
+     * 预设平面真的进了覆盖层，而且是官方那几段。
+     *
+     * 这几条断言的价值在 CI：`test-dsh-live-inventory.sh` 跑的就是这份导出的脚本，所以这里
+     * 钉住的形状一旦漂移（少一条 Host 行、注册表默认值写成不存在的 id、四份声明少一份），
+     * CI 那次的 dsh 会直接报出"预设挂不起来"，而不是悄悄退化成另一种行为。
+     */
+    @Test
+    fun presetPlaneCarriesTheHostRowRegistryAndEveryShippedPreset() {
+        val overlay = DshInventoryProbe.probeOverlay(presetPlane())
+
+        // 官方 Web 那条 Host 行：少了它 standard/ptc/cordis 里的 tool-subagent 行挂载即抛错，
+        // 注册表一条失败就整体拒绝 —— 表现是"预设列出来了、一行都没挂上"。
+        assertTrue(
+            "覆盖层里没有 subagent-model-selection-settings 那条 Host 行：\n$overlay",
+            overlay.contains(
+                "    - id: subagent-model-selection-settings\n" +
+                    "      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'\n",
+            ),
+        )
+        // Heta 自己那一跳。
+        assertTrue(
+            "覆盖层里没有 join 插件那一行：\n$overlay",
+            overlay.contains("    - id: heta-preset-join\n      name: ./heta-preset-join.mjs\n"),
+        )
+        // 注册表：默认值必须是四份声明里真有的那个。
+        assertTrue(
+            "注册表行不对：\n$overlay",
+            overlay.contains(
+                "- insert:\n    - id: agent-preset-registry\n" +
+                    "      name: '@deepseek-ai/dsh-agent-preset-registry'\n" +
+                    "      config:\n        default: standard\n",
+            ),
+        )
+        // 四份官方声明，一份都不能少。
+        DshPresetPlane.PRESET_IDS.forEach { id ->
+            assertTrue(
+                "少了 $id 的声明：\n$overlay",
+                overlay.contains("    - id: preset-$id\n      name: '@deepseek-ai/dsh-agent-preset'\n"),
+            )
+        }
+        // 部署人格必须进了预设的 persona 行（否则模型看不到身份句与技能库索引）。
+        assertTrue(
+            "部署人格没注入 standard 的 persona 行：\n$overlay",
+            overlay.contains("              HETA-PROBE-IDENTITY\n"),
+        )
+        // minimal 是 `complete: true` 的预设：官方语义就是"只用那段前缀当系统提示词"，
+        // 所以它必须**没有**被注入。
+        assertFalse(
+            "complete 的预设不该被注入人格：\n$overlay",
+            overlay.substringAfter("preset-minimal").substringBefore("preset-cordis")
+                .contains("HETA-PROBE-IDENTITY"),
+        )
+        // agent 平面让位：24 行，且每一行都是 disabled: true。
+        val managed = DshPresetPlane.managedRowIds { path -> asset(path) }
+        assertEquals("托管的行数不是 24（官方 Web 那段就是 24 行）", 24, managed.size)
+        assertTrue("tool-bash 不在托管列表里", "tool-bash" in managed)
+        assertTrue("tool-web 不在托管列表里", "tool-web" in managed)
+        managed.forEach { id ->
+            assertTrue(
+                "$id 在平面里不是 disabled: true：\n$overlay",
+                overlay.contains("- id: $id\n  disabled: true\n"),
+            )
+        }
     }
 
     @Test
@@ -165,7 +259,7 @@ class DshInventoryProbeScriptTest {
     fun writesTheExpectedOverlayBesideTheProbeScript() {
         val file = File("build/dsh-probe-overlay.patch.yml")
         file.parentFile?.mkdirs()
-        file.writeText(DshInventoryProbe.probeOverlay())
+        file.writeText(DshInventoryProbe.probeOverlay(presetPlane()))
 
         assertTrue("导出的覆盖层没写出来：${file.absolutePath}", file.length() > 0)
     }

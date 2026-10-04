@@ -277,6 +277,12 @@ jobs:
       - name: Kotlin 注释嵌套自检
         run: python3 scripts/check-kotlin-comment-nesting.py
 
+      # 预设 join 插件的守卫决策表。纯 node，不碰 dsh、不碰模拟器 —— 它挡的是那两种最贵的错：
+      # 该绑的不绑（agent 平面已经让位，会话就一行工具都没有）与不该绑的也绑（子 agent 撞上
+      # 官方 composeFrom 的 "Child already joined a preset"）。正例由下面的端到端冒烟覆盖。
+      - name: 预设 join 插件守卫自测
+        run: node scripts/test-heta-preset-join.mjs
+
       # 交叉验证的真值：dsh 自己算出来的组合结果。--dump-config 不挂载插件、不求值 !!js，
       # 所以架构无关，用 runner 的 node 就行（不需要 qemu、不联网）。变量经 $GITHUB_ENV 传给下一步，
       # 单测里的 DshPluginInventoryTest 拿它与 Kotlin 侧算出来的行逐条对比。

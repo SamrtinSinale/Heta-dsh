@@ -33,7 +33,6 @@ import io.github.mangi.eta.agent.dsh.DshInventoryRow
 import io.github.mangi.eta.agent.dsh.DshLiveEntry
 import io.github.mangi.eta.agent.dsh.DshLiveInventory
 import io.github.mangi.eta.agent.dsh.DshLivePreset
-import io.github.mangi.eta.agent.dsh.DshLivePresetRow
 import io.github.mangi.eta.agent.dsh.DshRowState
 import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
@@ -496,10 +495,22 @@ private fun LazyListScope.dshLiveSections(
     item(key = "presets_title") {
         EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_presets))
     }
+    item(key = "presets_intro") { DshNote(stringResource(R.string.extensions_preset_intro)) }
+    // 一张卡片一个预设：**点整行 = 设为新任务默认**（写 App 的偏好，下一轮 run 生效）。
+    // 这里也刻意**不**逐条列出组合行：那是 29×4 行的噪声，而"预设"要回答的是"用哪一套"，不是
+    // "这一套里第 17 行是什么"。组合详情在文件视图里逐行可查。
     live.presets.forEachIndexed { index, preset ->
-        // key 带上序号：预设 id 理论上唯一，但重复时不该让 Compose 抛"key 重复"。
-        item(key = "preset:$index:${preset.id}") { DshPresetRows(preset) }
+        item(key = "preset:${preset.id}") {
+            EtaPreferenceGroupItem(
+                isFirst = index == 0,
+                isLast = index == live.presets.lastIndex,
+                hasLeading = true,
+            ) {
+                DshPresetChoiceRow(store, preset)
+            }
+        }
     }
+    item(key = "presets_gap") { DshGroupGap() }
 }
 
 /**
@@ -590,54 +601,95 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
     }
 }
 
-/** 一个预设：名字 + 行数 + 默认标记，下面逐条列出它的组合行。 */
+/**
+ * 一个预设的卡片：名字（官方那套叫法）+ 官方说明 + 状态标记。**点整行 = 设为新任务默认**。
+ *
+ * 名字与说明为什么不由 roster 给：官方那四份声明**故意不发布 name**（`dsh-client-ui-agent-preset`
+ * 的 `isBuiltInPreset` 注释写着 "A shipped preset publishes no `name`; a declaration that names
+ * itself owns its copy"），客户端是拿 id 去查自己的文案表。Heta 照做：id → 本页资源，
+ * 查不到才退回 roster 给的 name（自定义预设将来走的就是那条）。
+ *
+ * 挂不起来的预设（[DshLivePreset.broken]）**不给点**：选它等于选一个没有工具的会话。官方原因
+ * 照实显示 —— 那是这一行唯一能说明"为什么没有行"的东西。
+ */
 @Composable
-private fun DshPresetRows(preset: DshLivePreset) {
-    EtaPreferenceGroup {
-        EtaPreference {
+private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset) {
+    val broken = preset.broken
+    val selected = store.selectedPresetId == preset.id
+    val label = dshPresetLabel(preset.id) ?: preset.name
+    val summary = if (broken != null) {
+        stringResource(R.string.extensions_preset_broken_summary, broken)
+    } else {
+        dshPresetSummary(preset.id)
+    }
+    EtaPreference(
+        enabled = broken == null,
+        onClick = if (broken == null) ({ store.selectPreset(preset.id) }) else null,
+        onClickLabel = if (broken == null) stringResource(R.string.extensions_preset_set_default) else null,
+        endActions = {
+            // 行尾只放状态：选中 = "新任务默认"；挂不起来 = "加载失败"（红字）。没有可选项时
+            // （既没选中也不坏）什么都不放 —— 那正是"可以点它来选"的常态。
+            val badge = when {
+                broken != null -> stringResource(R.string.extensions_preset_broken)
+                selected -> stringResource(R.string.extensions_preset_in_use)
+                else -> null
+            }
+            if (badge != null) {
+                Text(
+                    text = badge,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = if (broken != null) {
+                        MiuixTheme.colorScheme.error
+                    } else {
+                        MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    },
+                )
+            }
+        },
+    ) {
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.body1,
+            fontWeight = FontWeight.Medium,
+            color = if (broken == null) {
+                MiuixTheme.colorScheme.onBackground
+            } else {
+                MiuixTheme.colorScheme.disabledOnSurface
+            },
+        )
+        if (summary != null) {
             Text(
-                text = preset.name,
-                style = MiuixTheme.textStyles.body1,
-                fontWeight = FontWeight.Medium,
-                color = MiuixTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = listOfNotNull(
-                    stringResource(R.string.extensions_preset_rows, preset.rows.size),
-                    if (preset.isDefault) stringResource(R.string.extensions_preset_default) else null,
-                ).joinToString(" · "),
+                text = summary,
                 style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                color = if (broken == null) {
+                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                } else {
+                    MiuixTheme.colorScheme.disabledOnSurface
+                },
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        preset.rows.forEach { row ->
-            EtaPreferenceDivider()
-            EtaPreference {
-                Text(
-                    text = row.moduleName,
-                    style = MiuixTheme.textStyles.body1,
-                    color = MiuixTheme.colorScheme.onBackground,
-                )
-                Text(
-                    text = presetRowState(row),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                row.condition?.let {
-                    DshDetailLine(stringResource(R.string.extensions_preset_condition), it)
-                }
-                row.entryId?.let {
-                    DshDetailLine(stringResource(R.string.extensions_detail_entry_id), it)
-                }
-                // 桥只透传预设行的 patchId（官方那份投影里没有这个字段），多数时候是 null。
-                row.patchId?.let {
-                    DshDetailLine(stringResource(R.string.extensions_detail_patch_id), it)
-                }
-            }
-        }
     }
+}
+
+/** 官方那四个预设的名字；查不到（自定义预设）返回 null，由调用方退回 roster 给的 name。 */
+@Composable
+private fun dshPresetLabel(id: String): String? = when (id) {
+    "standard" -> stringResource(R.string.extensions_preset_standard_name)
+    "ptc" -> stringResource(R.string.extensions_preset_ptc_name)
+    "minimal" -> stringResource(R.string.extensions_preset_minimal_name)
+    "cordis" -> stringResource(R.string.extensions_preset_cordis_name)
+    else -> null
+}
+
+/** 官方那四个预设的一句话说明；查不到返回 null（那就只显示名字）。 */
+@Composable
+private fun dshPresetSummary(id: String): String? = when (id) {
+    "standard" -> stringResource(R.string.extensions_preset_standard_summary)
+    "ptc" -> stringResource(R.string.extensions_preset_ptc_summary)
+    "minimal" -> stringResource(R.string.extensions_preset_minimal_summary)
+    "cordis" -> stringResource(R.string.extensions_preset_cordis_summary)
+    else -> null
 }
 
 /** 配置状态：dsh 报的 `enabled` 是什么就说什么。 */
@@ -663,11 +715,5 @@ private fun runtimeStateLabel(phase: String?): String = when (phase) {
     else -> phase
 }
 
-/** 预设行的配置状态：布尔就是启用/禁用，`conditional` 是"由表达式决定"（不是禁用）。 */
-@Composable
-private fun presetRowState(row: DshLivePresetRow): String = when {
-    row.conditional -> stringResource(R.string.extensions_preset_conditional)
-    row.enabled == true -> stringResource(R.string.extensions_state_enabled)
-    row.enabled == false -> stringResource(R.string.extensions_state_disabled)
-    else -> stringResource(R.string.extensions_row_unresolved)
-}
+// 预设行的逐条状态（`presetRowState`）随"卡片式预设"一起删了：页面上不再逐行列出组合，
+// 那部分是 29×4 行的噪声。预设组合行仍然被解析（DshLivePresetRow），只是不画。

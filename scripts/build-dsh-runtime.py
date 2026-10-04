@@ -73,9 +73,42 @@ EXCLUDED = {
     "dsh",
 }
 
+# The agent presets Heta turns on need packages that **no bundle references**: the
+# preset declarations live in Heta's own patch layer (written by the App from
+# `app/src/main/assets/heta-presets/*.patch.yml`), not in dsh-base/dsh-acp-app, so
+# `referenced_packages()` cannot see them. Without this list the next rebuild
+# silently drops all 12 and every preset goes back to "broken" — which is exactly
+# the failure mode that made Heta look like "official presets don't exist".
+#
+# Used by: `subagent-model-selection-settings` is *not* here — that row is a
+# subpath of the already-installed dsh-tool-subagent (`./model-selection-settings`
+# in its exports map), so it only needs declaring in a patch layer.
+PRESET_PACKAGES = (
+    "dsh-agent-preset-registry",
+    "dsh-agent-preset",
+    "dsh-persona",
+    "dsh-tool-ask-user",
+    "dsh-agent-tool-presentation",
+    "dsh-tool-cordis",
+    "dsh-cordis-host-runner",
+    "dsh-terminal",
+    "dsh-terminal-bash",
+    "dsh-tool-bash-persistent",
+    "dsh-tool-pwsh-persistent",
+)
+
+# Non-`@deepseek-ai` dependencies of the packages above. The scope walker cannot
+# resolve these (it deliberately only follows `@deepseek-ai/*`), and a range walk
+# is not reproducible: `@xterm/headless` has `latest = 6.0.0` while `^6.0.0` also
+# admits the 6.1.0-beta line. Pinned, so the asset rebuilds byte-identically.
+PINNED_PACKAGES = {
+    "@xterm/headless": "6.0.0",
+}
+
 DEFAULT_REGISTRY = "https://registry.npmjs.org"
 PACKAGE_PREFIX = "@deepseek-ai/"
-SCOPE_DIR = "opt/dsh/node_modules/@deepseek-ai"
+NODE_MODULES_DIR = "opt/dsh/node_modules"
+SCOPE_DIR = f"{NODE_MODULES_DIR}/@deepseek-ai"
 DSH_PACKAGE_JSON = "opt/dsh/package.json"
 DEEPSEEK_LLM_INDEX = (
     "opt/dsh/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js"
@@ -131,15 +164,19 @@ def fetch_json(url: str, attempts: int = 5) -> dict:
     raise SystemExit(f"registry 不可用: {url} ({last})")
 
 
-def package_metadata(name: str, version: str, registry: str) -> dict | None:
+def package_metadata(full_name: str, version: str, registry: str) -> dict | None:
     """Metadata for one exact version, or None when the registry has no such package.
+
+    `full_name` is the real package name, scope included (`@deepseek-ai/dsh-x`,
+    `@xterm/headless`) — the pinned set is outside the `@deepseek-ai` scope, so the
+    scope cannot be prepended here any more.
 
     Some names only ever appear as prose inside the tree (a log message, a
     doc comment, a renamed-away package), so a 404 is expected and means "this
     is not a dependency" — the boot check in the release process is what proves
     the collected set is actually sufficient.
     """
-    url = f"{registry}/{PACKAGE_PREFIX}{name}/{version}"
+    url = f"{registry}/{full_name}/{version}"
     try:
         return fetch_json(url)
     except urllib.error.HTTPError as error:
@@ -201,7 +238,7 @@ def resolve_closure(
         if name in seen:
             continue
         seen.add(name)
-        metadata = package_metadata(name, version, registry)
+        metadata = package_metadata(f"{PACKAGE_PREFIX}{name}", version, registry)
         if metadata is None:
             log(f"  跳过 {name}：registry 上不存在（只是代码里的字符串，不是依赖）")
             continue
@@ -223,8 +260,10 @@ def extract(asset: Path, destination: Path) -> None:
     run(["tar", "-xJf", str(asset), "-C", str(destination)])
 
 
-def install_package(root: Path, name: str, metadata: dict, scratch: Path) -> None:
-    tarball = scratch / f"{name}.tgz"
+def install_into(target: Path, metadata: dict, scratch: Path) -> None:
+    """Fetch one npm tarball and place its payload at `target`."""
+    label = metadata["name"].replace("@", "").replace("/", "-")
+    tarball = scratch / f"{label}.tgz"
     request = urllib.request.Request(
         metadata["dist"]["tarball"],
         headers={"User-Agent": "heta-dsh-runtime-build"},
@@ -232,20 +271,53 @@ def install_package(root: Path, name: str, metadata: dict, scratch: Path) -> Non
     with urllib.request.urlopen(request, timeout=300) as response:
         tarball.write_bytes(response.read())
 
-    unpacked = scratch / f"{name}.d"
+    unpacked = scratch / f"{label}.d"
     if unpacked.exists():
         shutil.rmtree(unpacked)
     unpacked.mkdir(parents=True)
     with tarfile.open(tarball) as archive:
         archive.extractall(unpacked, filter="data")
 
-    target = root / SCOPE_DIR / name
     if target.exists():
         shutil.rmtree(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
     # npm tarballs always wrap their payload in a single `package/` directory.
     shutil.move(str(unpacked / "package"), str(target))
     tarball.unlink()
     shutil.rmtree(unpacked)
+
+
+def install_package(root: Path, name: str, metadata: dict, scratch: Path) -> None:
+    """Install one `@deepseek-ai/*` package into the scope directory."""
+    install_into(root / SCOPE_DIR / name, metadata, scratch)
+
+
+def resolve_pinned(
+    root: Path, planned: list[tuple[str, dict]], registry: str
+) -> list[tuple[str, str, dict]]:
+    """Non-scoped dependencies of the planned packages that carry a pin.
+
+    Only pinned names are considered: an unpinned non-scoped dependency of a new
+    package cannot be resolved reproducibly from `latest`, and guessing would make
+    the asset depend on the day it was built. A miss is therefore loud, not silent.
+    """
+    found: list[tuple[str, str, dict]] = []
+    seen: set[str] = set()
+    for _, metadata in planned:
+        for dependency in metadata.get("dependencies", {}):
+            if dependency.startswith(PACKAGE_PREFIX) or dependency in seen:
+                continue
+            version = PINNED_PACKAGES.get(dependency)
+            if version is None:
+                continue
+            seen.add(dependency)
+            if (root / NODE_MODULES_DIR / dependency).is_dir():
+                continue
+            detail = package_metadata(dependency, version, registry)
+            if detail is None:
+                raise SystemExit(f"registry 上找不到钉住的包 {dependency}@{version}")
+            found.append((dependency, version, detail))
+    return found
 
 
 def repack(root: Path, asset: Path) -> None:
@@ -488,21 +560,28 @@ def main() -> int:
 
         added = 0
         while True:
-            referenced = referenced_packages(root)
+            # 预设包并进来：它们不在任何 bundle 里，只由 Heta 的补丁层引用。
+            referenced = referenced_packages(root) | set(PRESET_PACKAGES)
             have = installed_packages(root)
             missing = referenced - have
-            if not missing:
+            pinned: list[tuple[str, str, dict]] = []
+            planned: list[tuple[str, dict]] = []
+            if missing:
+                log(f"引用 {len(referenced)} 个包，现有 {len(have)} 个，缺 {len(missing)} 个")
+                planned = resolve_closure(root, missing, version, args.registry)
+            # 钉住的非作用域包每轮都要查：它们可能是这一轮新装的包的依赖。
+            pinned = resolve_pinned(root, planned, args.registry)
+            if not missing and not pinned:
                 break
-            log(f"引用 {len(referenced)} 个包，现有 {len(have)} 个，缺 {len(missing)} 个")
-
-            planned = resolve_closure(root, missing, version, args.registry)
             if args.check:
                 log("缺失（--check 不下载）:")
                 for name, _ in planned:
                     log(f"  - {name}")
+                for full_name, pinned_version, _ in pinned:
+                    log(f"  - {full_name}@{pinned_version}")
                 log("运行时已过期：请运行 python3 scripts/build-dsh-runtime.py")
                 return 1
-            if not planned:
+            if not planned and not pinned:
                 # 剩下的名字在 registry 上都不存在，说明它们只是代码里的字符串。
                 # 不 break 就会原地打转。
                 log(f"剩下 {len(missing)} 个名字都取不到，按「不是依赖」处理：{sorted(missing)}")
@@ -511,7 +590,10 @@ def main() -> int:
             for name, metadata in planned:
                 log(f"  补 {name}@{metadata.get('version')}")
                 install_package(root, name, metadata, scratch)
-            added += len(planned)
+            for full_name, pinned_version, metadata in pinned:
+                log(f"  补 {full_name}@{pinned_version}（钉住的版本）")
+                install_into(root / NODE_MODULES_DIR / full_name, metadata, scratch)
+            added += len(planned) + len(pinned)
 
         if added == 0:
             if not shim_changed:

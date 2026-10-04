@@ -1,0 +1,85 @@
+# agent 平面：按官方 Web 的做法，把这些行从根上关掉，改由每个会话挂载的预设提供。
+#
+# 逐行抄自 @deepseek-ai/dsh-web-app@0.2.0-rc.2 的 cordis.patch.yml（那段注释的标题是
+# "the agent plane moves behind agent presets"）—— 官方原文：
+#
+#   Every row below composes what ONE agent contributes to the host registries:
+#   its tools, its prompt sections, its delegation backends. The base keeps them
+#   for the TUI, which is single-session and composes its agent process-wide; the
+#   Web surface disables them here and lets each session mount a preset instead.
+#
+# Heta 走的是 dsh-base + dsh-acp-app，官方这两份 bundle 里没有这段，也没有预设平面：
+# 不照抄这段就会出现"根上的工具 + 预设里的工具"两份，所以要么两边都有、要么两边都没有。
+# 由 scripts/build-dsh-runtime.py 里那份 PRESET_PACKAGES 保证预设包在资产里。
+
+- id: tool-plugin-manager
+  disabled: true
+
+- id: tool-bash
+  disabled: true
+
+- id: tool-pwsh
+  disabled: true
+
+- id: tool-jobs
+  disabled: true
+
+- id: tool-fs
+  disabled: true
+
+- id: tool-fs-search
+  disabled: true
+
+- id: skill-filesystem
+  disabled: true
+
+- id: tool-skill
+  disabled: true
+
+- id: command-goal
+  disabled: true
+
+- id: tool-goal
+  disabled: true
+
+- id: plan-mode
+  disabled: true
+
+- id: compaction-basic
+  disabled: true
+
+- id: command-compact
+  disabled: true
+
+- id: tool-result-pruner
+  disabled: true
+
+- id: tool-subagent-control
+  disabled: true
+
+- id: tool-subagent-list-agents
+  disabled: true
+
+- id: tool-subagent
+  disabled: true
+
+- id: tool-subagent-fork
+  disabled: true
+
+- id: workflow-ptc
+  disabled: true
+
+- id: tool-workflow
+  disabled: true
+
+- id: tool-ralph
+  disabled: true
+
+- id: agent-instructions
+  disabled: true
+
+- id: tool-todo
+  disabled: true
+
+- id: tool-web
+  disabled: true

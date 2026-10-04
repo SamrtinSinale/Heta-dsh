@@ -74,6 +74,12 @@ OVERLAY="${DSH_E2E_OVERLAY:-$(find "$REPO" -name dsh-e2e-overlay.patch.yml -prin
 echo "② 用单测导出的真 overlay：$OVERLAY"
 cp -f "$OVERLAY" "$ROOT/opt/dsh/heta-run-overlay.patch.yml"
 
+# 预设那一跳的插件：覆盖层里是相对名（`./heta-preset-join.mjs`），所以必须和覆盖层同目录。
+# 少了它，注册表在、agent 平面却被关了 —— 每个会话一行工具都没有（这正是要冒烟抓的那个形态）。
+JOIN="$REPO/app/src/main/assets/heta-preset-join.mjs"
+[ -f "$JOIN" ] || { echo "FAIL: 缺少 join 插件资产 $JOIN"; exit 1; }
+cp -f "$JOIN" "$ROOT/opt/dsh/heta-preset-join.mjs"
+
 rm -f "$ROOT/workspace/smoke.txt"
 MOCK_DUMP="$TMP/mock-dump.jsonl"
 echo "③ 起假模型（Anthropic Messages，127.0.0.1:$PORT）"
@@ -138,15 +144,21 @@ echo "   首回合会话：$SESSION_ID"
 echo "⑥ 第二回合：改人格 → 重启 dsh → session/resume → 再跑一轮"
 # 失败要能自解释：这三行分别证明"脚本确实带了 --patch""覆盖层里有我们要的人格"。
 echo "   启动脚本里的 patch 实参：$(grep -o -- '--patch [^ ]*' "$TMP/startup.sh" | head -1)"
-echo "   覆盖层 system-prompt 段："
+echo "   覆盖层 system-prompt 段（部署级；预设一开就被 persona 行遮蔽）："
 grep -A3 'id: system-prompt' "$ROOT/opt/dsh/heta-run-overlay.patch.yml" | sed 's/^/     /'
-# 一、把覆盖层里的 personaPrefix 换掉（它是单行 JSON 引号标量，直接 sed 就成合法 YAML）。
+echo "   覆盖层 preset persona 段（真正到模型手里的那一段）："
+grep -A8 "id: persona" "$ROOT/opt/dsh/heta-run-overlay.patch.yml" | head -12 | sed 's/^/     /'
+# 一、把**预设 persona 行**的前缀换掉。
+#     为什么不是换部署级那条 `personaPrefix`（`system-prompt` 行上那条）：预设里的 persona 行
+#     会**遮蔽**部署级前缀与后缀（dsh-persona 的 README：omitted or empty text shadows the
+#     global suffix away；`complete: true` 更是只留前缀）。所以"运行期人格"的真正归属是预设那一行，
+#     改部署级那条已经不会到模型手里 —— 这一点下面第 ⑨ 步会连身份句一起断言。
 #     人格只在进程启动时读一次，所以"改人格"必须重启 dsh —— 这也正是 App 的真实形态：
 #     每一轮 run 都是新进程 + session/resume。
 OVERLAY="$ROOT/opt/dsh/heta-run-overlay.patch.yml"
 cp -f "$OVERLAY" "$TMP/overlay-round1.yml"
 PERSONA2="HETA-E2E-PERSONA-2"
-sed -i "s|^    personaPrefix: .*|    personaPrefix: \"$PERSONA2\"|" "$OVERLAY"
+sed -i -E "s|^([[:space:]]+)prefix: You are a coding agent.*|\1prefix: \"$PERSONA2\"|" "$OVERLAY"
 grep -q "$PERSONA2" "$OVERLAY" || { echo "FAIL: 覆盖层里没换上第二人格"; exit 1; }
 
 # 二、凭据文件要重新放一份（第一回合的已被脚本 rm -f 掉）。
@@ -220,6 +232,12 @@ def user_texts(body):
 first_prompt = "跑一下冒烟测试：把标记写进文件并打印出来。"
 print(f"   假模型共收到 {len(requests)} 次请求")
 suffix_marker = "Your working directory is"
+# Heta 注入的部署人格：身份句（来自 AgentIdentity）与技能库索引。
+# 这两样必须出现在模型看到的 system 里 —— 预设的 persona 行会把部署级后缀整个遮蔽掉，
+# 所以它们必须被注入到预设的 persona 行里（见 DshPresetPlane.injectDeploymentSuffix）。
+# 实测过没注入时的样子：system 里既没有身份句也没有技能库。
+identity_marker = "DeepSeek Harness 编码助手"
+skills_marker = "技能库"
 
 
 def body_text(body):
@@ -240,6 +258,16 @@ for index, body in enumerate(requests):
     print(f"   请求 #{index + 1}：system {len(system)} 字符，"
           f"含我们的后缀={suffix_marker in system}，新人格位置={persona_location(body) or '无'}")
 problems = []
+missing_identity = [i + 1 for i, body in enumerate(requests) if identity_marker not in system_text(body)]
+missing_skills = [i + 1 for i, body in enumerate(requests) if skills_marker not in system_text(body)]
+if missing_identity:
+    problems.append(
+        f"模型看不到 Heta 的身份句（请求 {missing_identity}）—— 部署人格没进预设的 persona 行？"
+    )
+if missing_skills:
+    problems.append(
+        f"模型看不到技能库索引（请求 {missing_skills}）—— 技能会永远不被用上"
+    )
 if len(requests) < 3:
     problems.append(f"请求次数不对（{len(requests)} < 3），第二回合没跑起来")
 else:

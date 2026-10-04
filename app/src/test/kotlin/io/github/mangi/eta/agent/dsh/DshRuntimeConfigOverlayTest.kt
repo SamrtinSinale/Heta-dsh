@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.dsh
 
+import io.github.mangi.eta.agent.model.AgentIdentity
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,6 +31,14 @@ class DshRuntimeConfigOverlayTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
+    /**
+     * 资产读成文本：单测的工作目录是 `app/`，与生产 `Context.assets` 读的是**同一个文件**。
+     *
+     * 于是导出的 `build/dsh-e2e-overlay.patch.yml` 里就带着真正的预设平面，端到端冒烟跑的
+     * 就是"agent 平面搬进预设"之后的那个世界 —— 而不是一个没有预设的旧世界。
+     */
+    private fun asset(path: String): String = File("src/main/assets", path).readText()
+
     private fun config(
         skillsDirectory: String = "",
         model: String = "global:deepseek-v4.1-flash",
@@ -42,6 +51,21 @@ class DshRuntimeConfigOverlayTest {
             apiKey = "sk-test",
             baseUrl = "https://example.invalid",
             skillsDirectory = skillsDirectory,
+            presetPlane = DshPresetPlane.overlay(
+                { path -> asset(path) },
+                DshPresetPlane.DEFAULT_PRESET,
+                // 用真实那套生成逻辑（身份句 + 技能库索引 + 工作目录）：端到端要验的就是它到底
+                // 有没有到模型手里（预设的 persona 行会遮蔽部署级那一行）。
+                listOf(
+                    AgentIdentity.ROLE_LINE,
+                    "",
+                    "Your working directory is {{cwd}}.",
+                    // 这一行得带上「技能库」三个字：端到端冒烟就是用它在模型收到的 system 里
+                    // 找技能库索引（真跑时那几行由 DshRuntimeConfig.skillIndex() 生成）。
+                    "技能库：HETA-PROBE-SKILLS",
+                ),
+            ),
+            presetJoinPlugin = asset(DshPresetPlane.JOIN_ASSET),
         )
     }
 
@@ -136,8 +160,24 @@ class DshRuntimeConfigOverlayTest {
      * Heta 侧只看到 `protocol-eof`。以前的 `contains(...)` 断言对坏 YAML 完全免疫，
      * 所以这里必须真解析一遍。
      */
+    /**
+     * 把 `!!js <表达式>` 折成一个普通标量再交给 SnakeYAML。
+     *
+     * 为什么：dsh 的 YAML 方言里带 `!!js`（官方那四份预设声明里就有，例如
+     * `disabled: !!js process.platform === 'win32'`），dsh 自己用 js-yaml 配自定义 schema 解析它；
+     * 而 SnakeYAML 2.x 默认拒绝未知的全局 tag（`Global tag is not allowed: tag:yaml.org,2002:js`），
+     * 就算用 TagInspector 放行这个 tag，还得再补一个构造器，否则它找不到构造器照样抛。所以这里
+     * 的"解析失败"是**解析器的策略**，不是覆盖层真的坏了 —— 真正证明 dsh 读得动的是
+     * `scripts/test-dsh-e2e.sh`：真运行时、真 js-yaml，整份覆盖层都得过。
+     *
+     * 折叠只替换 `!!js` 之后那一段标量，映射 / 序列结构原样保留：覆盖层该有的形状仍然会被
+     * SnakeYAML 检出来。
+     */
+    private fun asSnakeYamlUnderstands(overlay: String): String =
+        overlay.replace(Regex("!!js [^\\n]*"), "true")
+
     private fun modelsOf(overlay: String): List<Map<*, *>> {
-        val parsed: Any? = Yaml().load<Any>(overlay)
+        val parsed: Any? = Yaml().load<Any>(asSnakeYamlUnderstands(overlay))
         assertTrue("覆盖层没解析成列表：\n$overlay", parsed is List<*>)
         val entries = (parsed as List<*>).filterIsInstance<Map<*, *>>()
         val llm = entries.firstOrNull { it["id"] == "llm-deepseek" }
@@ -192,6 +232,62 @@ class DshRuntimeConfigOverlayTest {
         )
         // 只删文件会留下一树空壳。
         assertTrue("没收回空目录：$command", command.contains("-type d -empty -delete"))
+    }
+
+    /**
+     * 预设平面真的进了覆盖层，而且顺序是对的。
+     *
+     * 顺序不是审美问题：官方那条 Host 行必须**排在四份预设声明之前** —— 预设声明一注册就会
+     * 立刻激活，而 standard/ptc/cordis 里的 `tool-subagent` 行带 `modelSelectionSettings: true`，
+     * 挂载时马上 `ctx.get("subagentModelSelection")`；那一行还没激活就抛错，注册表审计一条失败
+     * 即整体拒绝（`dsh-agent-preset-registry/lib/index.js:272-273`），四个预设定全部退回"声明文件"
+     * 状态 —— 表现就是"列出来了、一行都没挂上"。
+     */
+    @Test
+    fun overlayCarriesThePresetPlaneInTheOrderTheRegistryNeeds() {
+        val overlay = overlayOf(config())
+
+        val host = overlay.indexOf("subagent-model-selection-settings")
+        val registry = overlay.indexOf("agent-preset-registry")
+        val firstDeclaration = overlay.indexOf("preset-standard")
+        val join = overlay.indexOf("heta-preset-join")
+        val firstDisabled = overlay.indexOf("- id: tool-bash\n  disabled: true")
+
+        assertTrue("没有 Host 行：\n$overlay", host >= 0)
+        assertTrue("没有注册表行：\n$overlay", registry >= 0)
+        assertTrue("没有预设声明：\n$overlay", firstDeclaration >= 0)
+        assertTrue("没有 join 插件行：\n$overlay", join >= 0)
+        assertTrue("Host 行必须排在预设声明之前：host=$host decl=$firstDeclaration", host < firstDeclaration)
+        assertTrue("注册表必须排在预设声明之前：reg=$registry decl=$firstDeclaration", registry < firstDeclaration)
+        // agent 平面让位排在声明之后（官方也是这个顺序：先让每份预设拿到自己的行，再把根上的关掉）。
+        assertTrue("让位块没在末尾：$firstDisabled vs $firstDeclaration", firstDisabled > firstDeclaration)
+        // 默认预设就是选中的那个（这里没选过，所以是官方默认值）。
+        assertTrue(
+            "注册表的 default 不是官方默认值：\n$overlay",
+            overlay.contains("        default: ${DshPresetPlane.DEFAULT_PRESET}\n"),
+        )
+        // 身份句真的被塞进了预设的 persona 行（不是留在部署级那行等它被遮蔽）。
+        assertTrue(
+            "身份句没进预设 persona 行：\n$overlay",
+            overlay.contains("              ${AgentIdentity.ROLE_LINE}\n"),
+        )
+        // 四份声明都在。
+        DshPresetPlane.PRESET_IDS.forEach { id ->
+            assertTrue("少了 $id：\n$overlay", overlay.contains("    - id: preset-$id\n"))
+        }
+    }
+
+    /** join 插件真的被写进了 root（覆盖层里用相对名引用它，两者必须同目录）。 */
+    @Test
+    fun joinPluginLandsBesideTheOverlay() {
+        val config = config()
+        config.command()
+
+        val file = File(config.rootfsPath, "opt/dsh/heta-preset-join.mjs")
+        assertTrue("join 插件没写出来：${file.absolutePath}", file.isFile)
+        val text = file.readText()
+        assertTrue("join 插件里没有 agent/created：\n$text", text.contains("agent/created"))
+        assertTrue("join 插件里没有 mount：\n$text", text.contains("presets.mount("))
     }
 
     /**

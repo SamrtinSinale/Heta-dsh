@@ -1390,4 +1390,17 @@
   <string name="extensions_preset_default">default</string>
   <string name="extensions_preset_conditional">depends on a condition</string>
   <string name="extensions_preset_condition">Condition</string>
+  <string name="extensions_preset_intro">Choose the agent’s tools and how it works. Use Standard mode for everyday tasks, or Creator mode to add capabilities to DSH.</string>
+  <string name="extensions_preset_standard_name">Standard mode</string>
+  <string name="extensions_preset_standard_summary">Work with code, files, and information. Suitable for most tasks, with search, editing, terminal commands, and other tools available as needed.</string>
+  <string name="extensions_preset_ptc_name">PTC mode</string>
+  <string name="extensions_preset_ptc_summary">Includes all Standard mode capabilities. Better suited to tasks that call tools in batches and then filter, organize, deduplicate, count, or summarize the results.</string>
+  <string name="extensions_preset_minimal_name">Minimal mode</string>
+  <string name="extensions_preset_minimal_summary">The agent works using only a terminal tool. Useful for testing and comparing its basic performance.</string>
+  <string name="extensions_preset_cordis_name">Creator mode</string>
+  <string name="extensions_preset_cordis_summary">Customize DSH through conversation. Let the agent write plugins that add features or UI, or combine tools and prompts to create your own mode.</string>
+  <string name="extensions_preset_in_use">New task default</string>
+  <string name="extensions_preset_set_default">Set as new task default</string>
+  <string name="extensions_preset_broken">Failed to load</string>
+  <string name="extensions_preset_broken_summary">This preset cannot be loaded right now: %1$s</string>
 </resources>

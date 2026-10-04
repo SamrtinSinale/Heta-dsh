@@ -39,6 +39,8 @@ internal object DshInventoryProbe {
     private const val OVERLAY_IN_ROOT = "/opt/dsh/$OVERLAY_NAME"
 
     private const val BRIDGE_RELATIVE = "opt/dsh/$BRIDGE_ASSET"
+    /** join 插件与覆盖层同目录：覆盖层里那一行写的是相对名。 */
+    private const val JOIN_RELATIVE = "opt/dsh/heta-preset-join.mjs"
     private const val SCRIPT_RELATIVE = "opt/dsh/heta-inventory-probe.sh"
 
     /** 生成期占位符。**不是** shell 变量：生成后文本里一个 `@` 都不留。 */
@@ -87,7 +89,9 @@ internal object DshInventoryProbe {
         val stdoutFile = logs.first
         val stderrFile = logs.second
         try {
-            val script = prepare(context, root)
+            // 预设平面与真启动共用一份装配（DshPresetPlane），探针报的才是真世界。
+            val plane = DshPresetPlane.overlayFor(context, DshPresetPlane.selectedFor(context))
+            val script = prepare(context, root, plane)
             // stdout / stderr 都重定向到**文件**而不是管道：dsh 的日志量没有上限，而管道只有
             // 64KB —— 子进程写满就会卡在 write 上永远不退出，那时这里只看到"超时"，真正的原因
             //（输出太多）反而丢了。同一个理由见 `DshRuntimeInstaller.purgeLeftovers`。
@@ -133,16 +137,32 @@ internal object DshInventoryProbe {
      * 脚本写成 0644 而不是 0755：它由 `su -c "sh <脚本> <root>"` 读着执行（见 [command]），
      * POSIX 的 execve 才要求 x 位。少一个权限位就少一处"为什么这个文件是可执行的"的疑问。
      */
-    private fun prepare(context: Context, root: File): File {
+    private fun prepare(context: Context, root: File, presetPlane: String): File {
         val script = File(root, SCRIPT_RELATIVE)
         script.parentFile?.mkdirs()
-        script.writeText(probeScript(root, DshRuntimeConfig.PATH_IN_ROOT, DshRuntimeConfig.PERMISSION_MODE))
+        script.writeText(
+            probeScript(
+                root,
+                DshRuntimeConfig.PATH_IN_ROOT,
+                DshRuntimeConfig.PERMISSION_MODE,
+                presetPlane,
+            )
+        )
         readableByAll(script)
         val bridge = File(root, BRIDGE_RELATIVE)
         context.assets.open(BRIDGE_ASSET).use { input ->
             bridge.outputStream().use { output -> input.copyTo(output) }
         }
         readableByAll(bridge)
+        // join 插件也要在 root 里：覆盖层那一行是相对名，必须和覆盖层同目录。探针里它不会被
+        // 触发（没有 Agent 被创建），但"真启动有的东西探针也要有" —— 否则探针报的是另一个世界，
+        // 而"注册表在、却没人给会话绑预设"这种差异恰恰是最该看得见的那一类。
+        val join = DshPresetPlane.joinPluginFor(context)
+        if (join.isNotEmpty()) {
+            val file = File(root, JOIN_RELATIVE)
+            file.writeText(join)
+            readableByAll(file)
+        }
         return script
     }
 
@@ -184,12 +204,18 @@ internal object DshInventoryProbe {
      *     按**覆盖层文件所在目录**把它解析成 `file://` URL，所以桥必须和覆盖层放在同一个目录
      *     （就是 `<root>/opt/dsh/`）。写绝对路径反而要跟着 chroot 内外两套路径走，更容易错。
      */
-    internal fun probeOverlay(): String = buildString {
+    internal fun probeOverlay(presetPlane: String = ""): String = buildString {
         append("- id: acp\n")
         append("  disabled: true\n")
         append("- insert:\n")
         append("    - id: $BRIDGE_ENTRY_ID\n")
         append("      name: ./$BRIDGE_ASSET\n")
+        // 预设平面（Host 行 → 注册表 → 四份官方声明 → agent 平面让位）与真启动**同一份文本**：
+        // 探针要报的是真实对话会遇到的这个世界。少了它，页面上看到的 agent 平面是"根上活着"，
+        // 而真跑起来那 24 行是被预设接管的 —— 两套口径，比不显示更糟。
+        if (presetPlane.isNotBlank()) {
+            append(presetPlane.trimEnd()).append('\n')
+        }
     }
 
     /**
@@ -201,12 +227,17 @@ internal object DshInventoryProbe {
      *
      * 三个参数都是**生成期**就固定的：默认 root、PATH、权限模式。
      */
-    internal fun probeScript(runtimeRoot: File, pathValue: String, permissionMode: String): String =
+    internal fun probeScript(
+        runtimeRoot: File,
+        pathValue: String,
+        permissionMode: String,
+        presetPlane: String = "",
+    ): String =
         PROBE_SCRIPT_TEMPLATE
             .replace(ROOT_DEFAULT_SLOT, DshRuntimeConfig.shellQuote(runtimeRoot.absolutePath))
             .replace(PATH_SLOT, DshRuntimeConfig.shellQuote(pathValue))
             .replace(MODE_SLOT, DshRuntimeConfig.shellQuote(permissionMode))
-            .replace(OVERLAY_SLOT, probeOverlay())
+            .replace(OVERLAY_SLOT, probeOverlay(presetPlane))
 
     private fun describe(error: Throwable): String =
         error.message ?: error::class.java.simpleName
