@@ -12,6 +12,18 @@
  * 时 phase 为 null（官方那行三元就是 null，映射表里的 null 是 DISPOSED=4）。官方还会带
  * `pluginPackages` 的显示名元数据，这里省掉 —— App 侧不用它，多带一份就要多维护一份。
  *
+ * 每个条目**多带一个 `patchId`**（= `entry.options.id`），预设行尽量透传同名键。
+ *
+ * 为什么需要它：App 上的开关是**写 profile 补丁层**，而写文件是按**补丁行 id**定位那一行的
+ * （官方 `writePluginEnabled(path, row.patchId, row.moduleName, enabled)`）；这里透出的
+ * `entryId` 是 **Loader 树里的 id**（`include:acp` 这种带 include 前缀的），**两者不是一回事**。
+ * 官方 `listPlugins` 正是自己补上这一跳：拿 `entry.entryId` 回 Loader 树里找出那个条目、再取
+ * `entry.options.id` 当 `patchId`（`const candidates = rows.filter((row) => row.id ===
+ * actual?.options.id)`）—— App 侧拿不到 Loader 树，所以这一跳只能在这里做。
+ *
+ * `options.id` 缺失时**不写这个键**：少一个键就是"这一行没有补丁行 id，改不了"；写 null
+ * 反而会被 App 读成"有值但为空"，把"定位不到"伪装成"定位到了"。
+ *
  * 什么时候打：dsh 的"就绪"是**服务式**的（`dsh-acp-app` 用 `ctx.provide('acpAppStartup')`
  * 让 ACP 桥等它），并没有一个全局 ready 事件可以赌。所以这里用**稳定判据**：每 250ms 数一次
  * Loader 条目，连续 1s 不再增长就认为挂完了；`ready` 事件若真的来，就立刻打。
@@ -23,6 +35,11 @@
  *
  * 实测（2026-10-04，真 arm64 运行时 + qemu-aarch64）：acp profile 是 98 条非 group 条目、
  * `hasPresets: false`（随包没有 roster 发布者）、无重复 entryId，整条脚本 27 秒。
+ * 带上 `patchId` 之后复测（同一条命令，本机 20 秒）：98 条**全部**有它，头三条是
+ * `include` → `include`、`include:tool-plugin-manager` → `tool-plugin-manager`、
+ * `include:plugin-manager` → `plugin-manager`。这一份运行时里恰好每条都只是"include: 一层"，
+ * 所以"entryId 去掉前缀"那个老经验这次也对得上 —— 但那是巧合，不是契约：include 可以嵌套，
+ * Loader 树 id 与补丁行 id 本来就不是一个空间，所以补丁行 id 必须由桥自己给（见上面那段）。
  */
 
 const MARKER = 'HETA-INVENTORY-JSON:'
@@ -70,7 +87,17 @@ function phaseOfState(state) {
   return FIBER_PHASE[state] ?? null
 }
 
-/** 照抄官方 `readPluginInventory` 的条目投影与预设投影。 */
+/**
+ * 补丁行 id → 输出里那个键。
+ *
+ * 只在**非空字符串**时才带出去（缺失 / 不是字符串 / 空串一律不带这个键，理由见文件头）：
+ * 条目走 `entry.options.id`，预设行走行自己的 `patchId`。
+ */
+function patchIdField(value) {
+  return typeof value === 'string' && value.length > 0 ? { patchId: value } : {}
+}
+
+/** 照抄官方 `readPluginInventory` 的条目投影与预设投影（外加 App 开关要的 `patchId`）。 */
 async function readInventory(ctx) {
   const entries = []
   for (const entry of ctx.loader.entries()) {
@@ -80,6 +107,7 @@ async function readInventory(ctx) {
       moduleName: entry.options.name,
       enabled: !entry.disabled,
       fiberPhase: phaseOf(entry.fiber),
+      ...patchIdField(entry.options.id),
     })
   }
   const presets = ctx.get('agentPresets')
@@ -104,6 +132,12 @@ async function readPresets(presets) {
     rows: (composition.rows ?? []).map(({ fiberState, ...row }) => ({
       ...row,
       fiberPhase: phaseOfState(fiberState),
+      // 预设行**只透传**：官方投影的 AgentPresetPluginRow 里没有补丁行 id 这个字段
+      //（只有 entryId / moduleName / enabled / condition / fiberPhase），官方那边
+      // listPlugins 也只覆盖 Loader 条目，预设组合行不参与写文件。行自己带了 `patchId`
+      // 就带出去，没带就不写这个键 —— 绝不拿 `entryId` 冒充它：那是组合行自己的 id，
+      // 写进 profile 补丁层就是往错的行上写。
+      ...patchIdField(row.patchId),
     })),
   }))
 }

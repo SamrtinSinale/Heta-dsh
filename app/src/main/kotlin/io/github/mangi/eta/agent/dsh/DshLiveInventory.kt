@@ -17,13 +17,18 @@ import org.json.JSONObject
  *     [DshExtensionsStore.patchRowFor] 的说明）；
  *   · `moduleName` = `entry.options.name`；
  *   · `enabled`    = `!entry.disabled`（**配置状态**：配置里这一行是不是开着的）；
- *   · `fiberPhase` = `entry.fiber.state` 经映射表得到（**运行状态**），没挂上就是 null。
+ *   · `fiberPhase` = `entry.fiber.state` 经映射表得到（**运行状态**），没挂上就是 null；
+ *   · `patchId`    = `entry.options.id`（**补丁行 id**；官方 `listPlugins` 就是自己回 Loader 树
+ *     里补上这一跳的）。开关写文件要的正是它，**不是** [entryId]：写文件按补丁行定位
+ *     （[DshProfileStore.setPluginEnabled]），而 Loader 树里的 id 带 `include:` 前缀，两者不是
+ *     一回事。桥没给这个键（`options.id` 缺失）时是 null —— 界面据此把这一行的开关禁掉并说明原因。
  */
 internal data class DshLiveEntry(
     val entryId: String,
     val moduleName: String,
     val enabled: Boolean,
     val fiberPhase: String?,
+    val patchId: String?,
 )
 
 /**
@@ -40,6 +45,13 @@ internal data class DshLivePresetRow(
     val conditional: Boolean,
     val condition: String?,
     val fiberPhase: String?,
+    /**
+     * 补丁行 id，**只透传**：官方那份投影里预设行没有这个字段（`AgentPresetPluginRow` 只有
+     * entryId / moduleName / enabled / condition / fiberPhase），官方那边预设组合行也不参与写文件
+     *（见 `heta-inventory-bridge.mjs` 里 readPresets 的说明）。所以它通常是 null；留着这个字段
+     * 是为了桥真带出来时不丢信息 —— 界面这一期不给预设行开关。
+     */
+    val patchId: String?,
 )
 
 /** 一个预设：名字、是不是默认、以及它组合了哪些行。 */
@@ -84,6 +96,7 @@ internal object DshLiveInventoryCodec {
     private const val PRESETS = "agentPresets"
     private const val ENTRY_ID = "entryId"
     private const val MODULE_NAME = "moduleName"
+    private const val PATCH_ID = "patchId"
     private const val ENABLED = "enabled"
     private const val FIBER_PHASE = "fiberPhase"
     private const val CONDITION = "condition"
@@ -137,6 +150,9 @@ internal object DshLiveInventoryCodec {
                 //（关着会让用户以为要自己去开）。
                 enabled = booleanOrNull(item, ENABLED) ?: true,
                 fiberPhase = textOrNull(item, FIBER_PHASE),
+                // 桥没给这个键（或给了空值）就是"这一行没有补丁行 id"：界面据此禁掉它的开关，
+                // 而不是拿 entryId 去试（那是 Loader 树 id，写文件按它定位就是改错行）。
+                patchId = textOrNull(item, PATCH_ID),
             )
         }
         return entries
@@ -174,6 +190,7 @@ internal object DshLiveInventoryCodec {
                 conditional = raw is String && raw == CONDITIONAL,
                 condition = textOrNull(item, CONDITION),
                 fiberPhase = textOrNull(item, FIBER_PHASE),
+                patchId = textOrNull(item, PATCH_ID),
             )
         }
         return rows

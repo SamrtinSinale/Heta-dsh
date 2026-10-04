@@ -2,17 +2,21 @@ package io.github.mangi.eta.ui.screens.extensions
 
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshInventory
+import io.github.mangi.eta.agent.dsh.DshInventoryBundle
 import io.github.mangi.eta.agent.dsh.DshInventoryProbe
 import io.github.mangi.eta.agent.dsh.DshInventoryRow
 import io.github.mangi.eta.agent.dsh.DshLiveEntry
 import io.github.mangi.eta.agent.dsh.DshLiveInventory
+import io.github.mangi.eta.agent.dsh.DshLiveInventoryCache
 import io.github.mangi.eta.agent.dsh.DshPluginInventory
 import io.github.mangi.eta.agent.dsh.DshProfileStore
 import io.github.mangi.eta.agent.dsh.DshProfileWrite
+import io.github.mangi.eta.agent.dsh.DshRowState
 import io.github.mangi.eta.agent.dsh.DshRuntimeInstaller
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -26,8 +30,15 @@ import kotlinx.coroutines.withContext
  * 为什么跟着页面走而不是 ViewModel：这里的状态不跨页面共享，也没有需要活过组合的草稿；
  * 页面一走那次读/写就断掉，反而不会留下一个还在写文件的孤儿（形制同 `SpeechSettingsStore`）。
  *
- * 读与写共用**同一个** busy 标志：两者碰的是同一份 profile 文件，重叠执行时读回来的可能是
- * 写之前的形态，列表就会和刚点出来的结果对不上。
+ * **起一次 dsh 很贵**（[DshInventoryProbe] 要真跑一遍运行时，手机上几秒级），所以只有两种情况会探：
+ *   · 进页面时**没有**活清单缓存（第一次，界面得等着：[liveLoading]）；
+ *   · 缓存过期（超过 [DshLiveInventoryCache] 的 TTL）或被标脏，以及用户按了顶部刷新
+ *     —— 这两种都**先渲染旧的**，再在后台更新一次，不打回 loading。
+ * 其余动作（最要紧的是：开关一行插件）**绝不起 dsh**：写完文件就地改本地状态（[pending]），
+ * 活清单缓存只标脏。
+ *
+ * 读与写不再共用 busy：一次探针可能跑十几秒，拿它挡住开关就是"点了没反应"（真机反馈④）。
+ * 两者重叠也不会把界面搅乱 —— 写完的那一行由 [pending] 说了算，晚到的探针结果覆盖不了它。
  */
 internal class DshExtensionsStore(
     context: Context,
@@ -44,7 +55,7 @@ internal class DshExtensionsStore(
     var runtimeReady by mutableStateOf(true)
         private set
 
-    /** 读或写在飞：期间禁掉开关与刷新，免得两次写互相盖掉。 */
+    /** 一次**写**在飞：期间禁掉开关与刷新（两个写重叠就会互相盖掉，白点一下）。 */
     var working by mutableStateOf(false)
         private set
 
@@ -67,12 +78,47 @@ internal class DshExtensionsStore(
         private set
 
     /**
-     * 探针在读。
+     * 探针在读，而且界面上**还没有任何活清单**可显示（第一次进页面）。
      *
-     * 它要真起一次 dsh，几秒级；不给这个标志的话，开页面那一下看起来就是"点了没反应"。
+     * 有缓存时后台更新**不**置它：那种情况下页面照旧渲染缓存，用户看不到"正在读取"（真机反馈①）。
+     * 它要真起一次 dsh，几秒级；没有这个标志的话，第一次进页面那一下看起来就是"点了没反应"。
      */
     var liveLoading by mutableStateOf(false)
         private set
+
+    /**
+     * 活清单这一轮读完没有。
+     *
+     * 界面拿它挡一件事：文件视图与活清单是**两套数据**，开关的口径不一样（文件视图按补丁行、
+     * 活清单按运行中的条目），中间态就把开关画出来会"先出来一个、下一帧又没了"（真机反馈⑤）。
+     * 所以它是 false 时界面一行开关都不画，只显示"正在读取"；一旦落定就**不再**回到 false ——
+     * 同一个页面里，同一行不该一会儿有开关一会儿没有。
+     */
+    var liveSettled by mutableStateOf(false)
+        private set
+
+    /**
+     * 探针在飞（一次只允许一个）。
+     *
+     * 它**不等于** [working]：探针期间开关照旧要能点（真机反馈②④），只是刷新按钮先别点。
+     */
+    var probing by mutableStateOf(false)
+        private set
+
+    /** 一次"读清单"在飞（含后台更新）：只用来挡住重复进来，不挡界面上的开关。 */
+    private var loadingNow = false
+
+    /**
+     * 本地刚改过的行：补丁行 id → 用户点出来的开 / 关。
+     *
+     * 为什么需要它：写完文件 dsh 并不会立刻重载（hmr 在 profile 里是关的），活清单里的 `enabled`
+     * 仍然是**改之前**那个值 —— 不拿它压住，开关就会"自己弹回去"。它也顺手解决另一件事：
+     * 界面不再为了显示一个开关去重读任何东西。
+     */
+    private val pending = mutableStateMapOf<String, Boolean>()
+
+    /** bundle 的本地改写：名字 → 用户在界面上选 / 禁的结果（同上，写完不再重读清单）。 */
+    private val pendingBundles = mutableStateMapOf<String, Boolean>()
 
     /** 结果提示；写入被拒绝时它就是数据层给的理由原文。 */
     var message by mutableStateOf<String?>(null)
@@ -81,104 +127,197 @@ internal class DshExtensionsStore(
         private set
 
     init {
-        reload()
+        load(explicit = false)
     }
 
-    /** 重新读清单：首次进入、点刷新、以及真正写成功之后各一次。 */
-    fun reload() {
-        if (working) return
-        working = true
+    /** 顶部那个刷新按钮：显式重探一次 —— 界面上唯一一个"一定会起 dsh"的入口。 */
+    fun reload() = load(explicit = true)
+
+    /**
+     * 读一次清单。
+     *
+     * [explicit] = true 只来自顶部那个刷新按钮（它一定要真探一次，不然那个按钮就没有意义了）；
+     * false 是"进页面"，按缓存来（见类头那段）。
+     */
+    private fun load(explicit: Boolean) {
+        if (loadingNow) return
+        loadingNow = true
         scope.launch {
             try {
-                val ready = withContext(Dispatchers.IO) { DshRuntimeInstaller.isReady(appContext) }
-                runtimeReady = ready
-                if (!ready) {
-                    // 运行时不在时读出来只会是一屏"找不到这个包"：那不是这个页面要说的事。
-                    inventory = null
-                    live = null
-                    liveProblem = null
-                    return@launch
-                }
-                val result = withContext(Dispatchers.IO) {
-                    runCatching {
-                        val runtimeRoot = DshRuntimeInstaller.runtimeDirectory(appContext)
-                        // profile 目录是 dsh（root）建的：App 读得到、写不进去（连在里面建临时文件都被拒）。
-                        // 读清单本身不需要写权限，但用户下一步就是点开关 —— 所以在这里先把 owner 修好，
-                        // 免得到时候"第一次点必然失败"。修完仍写不进时，写那边会把真实错因显示出来。
-                        // 这一步会走 su（阻塞），必须在 IO 上下文里。
-                        val profileDir = DshProfileStore.forRuntime(runtimeRoot).profileDir
-                        if (!profileDir.canWrite()) DshRuntimeInstaller.handProfileToApp(profileDir)
-                        // profile 名两边都靠默认值（acp）：各写一遍反而会漂移。
-                        DshPluginInventory(runtimeRoot).read()
-                    }
-                }
-                result.fold(
-                    onSuccess = { inventory = it },
-                    onFailure = { error ->
-                        if (error is CancellationException) throw error
-                        inventory = null
-                        fail(R.string.extensions_load_failed, error)
-                    },
-                )
-                // 活清单是**独立一步**：文件视图读坏了不影响它，它失败也只让插件行退回文件视图
-                // —— 两条路径谁也不许把对方判死（这一页的底线是不能空白）。
-                //
-                // 放在文件视图之后：无论探针成不成，bundle 那一组和开关都必须先有数据。
-                liveLoading = true
-                try {
-                    // 探针会走 su + chroot（阻塞在 waitFor 上），必须在 IO 上下文里。
-                    when (val probe = withContext(Dispatchers.IO) { DshInventoryProbe.read(appContext) }) {
-                        is DshLiveInventory.Ready -> {
-                            live = probe
-                            liveProblem = null
-                        }
-
-                        is DshLiveInventory.Failed -> {
-                            live = null
-                            liveProblem = probe.reason
-                        }
-                    }
-                } finally {
-                    liveLoading = false
-                }
+                read(explicit)
             } finally {
-                working = false
+                loadingNow = false
                 loading = false
             }
         }
     }
 
+    private suspend fun read(explicit: Boolean) {
+        val ready = withContext(Dispatchers.IO) { DshRuntimeInstaller.isReady(appContext) }
+        runtimeReady = ready
+        if (!ready) {
+            // 运行时不在时读出来只会是一屏"找不到这个包"：那不是这个页面要说的事。
+            inventory = null
+            live = null
+            liveProblem = null
+            liveSettled = true
+            return
+        }
+        readFileInventory()
+        // 文件视图一落地就放开 loading：探针要几秒，没必要让整页干等它（这一页的底线是不空白）。
+        loading = false
+        readLiveInventory(explicit)
+    }
+
     /**
-     * 活清单里的一行 → 补丁层里可写的那一行。查不到就返回 null（界面上不给开关）。
+     * 读**文件视图**：补丁层合并出来的那张表。很便宜 —— 只读那几个文件，不起 dsh。
      *
-     * 两边的 id **不是同一个空间**：补丁层里写的是 `acp` / `hmr`，而 Loader 树里的 id 是
-     * `include:acp` —— dsh 的 include 插件会给子条目加上"父 id + 冒号"的前缀（根那条
-     * `cordis:include` 的 id 就是 `include`，本机实测）。所以先用原样、再用去掉第一段前缀的
-     * 候选去查。两个都查不到就是"补丁层里没有这一行"（例如探针自己挂的
-     * `include:heta-inventory-bridge`），那一行只显示状态、不给开关 —— 编一个 id 写进配置
-     * 只会把 profile 改坏。
+     * 单独抽出来是因为"读"不再只有一条路：活清单有缓存时只走这一步。
+     */
+    private suspend fun readFileInventory() {
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                val runtimeRoot = DshRuntimeInstaller.runtimeDirectory(appContext)
+                // profile 目录是 dsh（root）建的：App 读得到、写不进去（连在里面建临时文件都被拒）。
+                // 读清单本身不需要写权限，但用户下一步就是点开关 —— 所以在这里先把 owner 修好，
+                // 免得到时候"第一次点必然失败"。修完仍写不进时，写那边会把真实错因显示出来。
+                // 这一步会走 su（阻塞），必须在 IO 上下文里。
+                val profileDir = DshProfileStore.forRuntime(runtimeRoot).profileDir
+                if (!profileDir.canWrite()) DshRuntimeInstaller.handProfileToApp(profileDir)
+                // profile 名两边都靠默认值（acp）：各写一遍反而会漂移。
+                DshPluginInventory(runtimeRoot).read()
+            }
+        }
+        result.fold(
+            onSuccess = { inventory = it },
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                inventory = null
+                fail(R.string.extensions_load_failed, error)
+            },
+        )
+    }
+
+    /**
+     * 读**活清单**（dsh 进程里那份）：**有缓存就直接渲染，没有（或过期 / 显式刷新）才起 dsh**。
+     *
+     * 活清单是**独立一步**：文件视图读坏了不影响它，它失败也只让插件行退回文件视图 ——
+     * 两条路径谁也不许把对方判死（这一页的底线是不能空白）。
+     */
+    private suspend fun readLiveInventory(explicit: Boolean) {
+        try {
+            val cached = DshLiveInventoryCache.get()
+            if (cached != null) {
+                // 先给旧的：**绝不**因为"它可能不准"就打回 loading（真机反馈①）。
+                live = cached
+                liveProblem = null
+                if (!explicit && !DshLiveInventoryCache.isStale()) return
+            }
+            if (probing) return
+            probing = true
+            // 只有"什么都没有"时才让界面说"正在读"；后台更新不打扰已经显示出来的那一屏。
+            liveLoading = cached == null
+            try {
+                // 探针会走 su + chroot（阻塞在 waitFor 上），必须在 IO 上下文里。
+                when (val probe = withContext(Dispatchers.IO) { DshInventoryProbe.read(appContext) }) {
+                    is DshLiveInventory.Ready -> {
+                        DshLiveInventoryCache.put(probe)
+                        live = probe
+                        liveProblem = null
+                    }
+
+                    is DshLiveInventory.Failed -> {
+                        // 失败**不动缓存**：旧的那份还能看（页面不空白），原因单独说一句。
+                        if (cached == null) live = null
+                        liveProblem = probe.reason
+                    }
+                }
+            } finally {
+                probing = false
+                liveLoading = false
+            }
+        } finally {
+            // 读到什么都算这一轮结束：从现在起界面可以放心画开关了（见 [liveSettled]）。
+            liveSettled = true
+        }
+    }
+
+    /**
+     * 活清单里的一行 → 文件视图（补丁层）里那一行。查不到就返回 null。
+     *
+     * 先按 [DshLiveEntry.patchId] 查 —— 那是**补丁行 id**（官方 `listPlugins` 里同一个东西），
+     * 与补丁层里的行是同一个 id 空间，一查就中。查不到再退回老办法：补丁层里写的是 `acp` / `hmr`，
+     * 而 Loader 树里的 id 是 `include:acp`（dsh 的 include 插件给子条目加了"父 id + 冒号"的前缀，
+     * 根那条 `cordis:include` 的 id 就是 `include`，本机实测），所以再去掉第一段前缀试一次。
+     *
+     * **这一行只用来显示**（补丁层里那一行的来源、"管理模块不许关"这条理由）。开关写文件直接用
+     * [DshLiveEntry.patchId]，不再依赖这里查得到查不到 —— 查不到只是少几条详情（真机反馈④：
+     * 以前查不到就整行不给开关）。
      *
      * 不做"按模块名猜"的兜底：同一个模块名可能对应好几行（实测 `@deepseek-ai/dsh-tool-subagent`
      * 同时是 `tool-subagent` 与 `tool-subagent-fork`），猜错就是改错行。
      */
     fun patchRowFor(entry: DshLiveEntry): DshInventoryRow? {
         val rows = inventory?.rows ?: return null
+        entry.patchId?.let { patchId -> rows.firstOrNull { it.patchId == patchId }?.let { return it } }
         val namespaced = entry.entryId.substringAfter(':', missingDelimiterValue = "")
         return rows.firstOrNull { it.patchId == entry.entryId }
             ?: rows.firstOrNull { namespaced.isNotEmpty() && it.patchId == namespaced }
     }
 
+    /**
+     * 这一行（活清单）的开关该显示成什么。
+     *
+     * 本地刚点过的那个值优先：写完文件 dsh 并没有重载，活清单里的 `enabled` 还是旧的 ——
+     * 照它显示就是"开关点了又自己弹回去"。
+     */
+    fun enabledFor(entry: DshLiveEntry): Boolean = entry.patchId?.let { pending[it] } ?: entry.enabled
+
+    /** 文件视图那一行的配置状态（同上：本地刚点过的优先）。 */
+    fun stateFor(row: DshInventoryRow): DshRowState =
+        pending[row.patchId]?.let { if (it) DshRowState.ENABLED else DshRowState.DISABLED } ?: row.state
+
+    /** bundle 的选中状态（同上）。 */
+    fun bundleSelected(bundle: DshInventoryBundle): Boolean =
+        pendingBundles[bundle.name] ?: bundle.selected
+
     /** 选 / 禁一个 bundle：改 profile 清单里的 `dsh.profile.bundles`。 */
     fun setBundleSelected(name: String, selected: Boolean) {
-        write { profile -> profile.setBundleSelected(name, selected) }
+        write(
+            action = { profile -> profile.setBundleSelected(name, selected) },
+            applied = { pendingBundles[name] = selected },
+        )
     }
 
-    /** 开 / 关一行插件：按补丁行 id 往 profile 补丁层写该行的 `disabled`。 */
-    fun setPluginEnabled(row: DshInventoryRow, enabled: Boolean) {
-        write { profile -> profile.setPluginEnabled(row.patchId, row.moduleName, enabled) }
+    /**
+     * 开 / 关一行插件：按**补丁行 id** 往 profile 补丁层写这一行的 `disabled`。
+     *
+     * [patchId] 就是 [DshLiveEntry.patchId] / [DshInventoryRow.patchId]（补丁行 id，**不是** Loader
+     * 树 id）；[moduleName] 只在这一行还不存在于补丁层里、要新加一条覆盖行时用得上。
+     *
+     * 写完**不重读、不重探**：dsh 要下一次对话才重载，这里只把这一行在本地改掉（[pending]），
+     * 并把活清单缓存标脏 —— 下次（显式或过期后的后台）刷新才会真去探一遍。
+     */
+    fun setPluginEnabled(patchId: String, moduleName: String?, enabled: Boolean) {
+        write(
+            action = { profile -> profile.setPluginEnabled(patchId, moduleName, enabled) },
+            applied = {
+                pending[patchId] = enabled
+                // 活缓存里那一行已经不是现状了：下次要真探一次，别拿旧的糊弄。
+                DshLiveInventoryCache.invalidate()
+            },
+        )
     }
 
-    private fun write(action: (DshProfileStore) -> DshProfileWrite) {
+    /**
+     * 共用的写路径：一次只允许一个写。
+     *
+     * [applied] 只在**写成功**之后跑（被拒 / 抛异常时界面照旧按旧状态显示 —— 那才是真的）。
+     */
+    private fun write(
+        action: (DshProfileStore) -> DshProfileWrite,
+        applied: () -> Unit,
+    ) {
         if (working) return
         working = true
         scope.launch {
@@ -197,7 +336,7 @@ internal class DshExtensionsStore(
             }
             working = false
             result.fold(
-                onSuccess = ::settle,
+                onSuccess = { settle(it, applied) },
                 onFailure = { error ->
                     if (error is CancellationException) throw error
                     fail(R.string.extensions_write_failed, error)
@@ -206,15 +345,19 @@ internal class DshExtensionsStore(
         }
     }
 
-    private fun settle(result: DshProfileWrite) {
+    private fun settle(result: DshProfileWrite, applied: () -> Unit) {
         when (result) {
-            is DshProfileWrite.Ok -> if (result.changed) {
-                message = appContext.getString(R.string.extensions_message_saved)
-                messageIsError = false
-                // 只有真动了文件才重读：changed=false 时清单不可能变。
-                reload()
-            } else {
-                message = appContext.getString(R.string.extensions_message_unchanged)
+            is DshProfileWrite.Ok -> {
+                // changed=false（文件里本来就是想要的那个状态）也要改本地显示：用户刚点的那个值
+                // 就是界面该显示的值，而文件确实没动（提示文案说的是"没写"）。
+                applied()
+                message = appContext.getString(
+                    if (result.changed) {
+                        R.string.extensions_message_saved
+                    } else {
+                        R.string.extensions_message_unchanged
+                    },
+                )
                 messageIsError = false
             }
 
