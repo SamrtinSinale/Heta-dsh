@@ -347,6 +347,104 @@ class DshPluginInventoryTest {
     }
 
     /** 搭一棵 runtime 树：安装清单 + profile 清单（+ 可选的各层补丁文件）。 */
+    /**
+     * 预设平面（Heta 自己写进覆盖层的那一整段）里的行，必须出现在文件视图里。
+     *
+     * 真机反馈（2026-10-04）：`@deepseek-ai/dsh-tool-subagent/model-selection-settings`、
+     * `file:///opt/dsh/heta-preset-join.mjs`、`@deepseek-ai/dsh-cordis-host-runner`、
+     * `@deepseek-ai/dsh-tool-cordis/host`、`@deepseek-ai/dsh-agent-preset-registry` 与四份
+     * `@deepseek-ai/dsh-agent-preset` 声明**都在跑**（页面写着"已启用·运行中"），却每一行都被
+     * 标上"配置里还没有这一行，先点右上角刷新" —— 也就是说文件层根本没解析出它们，
+     * 而"刷新"当然也刷不出来。这条测试就是那个症状的复现。
+     *
+     * 为什么覆盖层要按真文本喂进来：这些行全都写在 `- insert:` 分组里（官方那四份预设声明本身
+     * 就是 `- insert:` 包里的一串子行），而 `DshPatchDocument` 对 `insert:` 的缩进规则是有讲究的。
+     */
+    @Test
+    fun presetPlaneRowsAreVisibleInTheFileInventory() {
+        val read: (String) -> String = { path -> asset(path) }
+        // **故意不写覆盖层文件**：真机上就是这个状态 —— 刚重装完运行时（REVISION 变了会整棵树
+        // 重解包）、还没开始任何对话，`opt/dsh/heta-run-overlay.patch.yml` 根本不存在。
+        // 平面必须照样出现在文件视图里，否则那十行正在跑的插件会被标成"配置里还没有这一行"，
+        // 而且用户点刷新也刷不出来（真机反馈："刷新是个空壳"）。
+        runtime()
+        installBundle(BASE, BASE_PATCH)
+        installBundle(ACP_APP, ACP_APP_PATCH)
+
+        val inventory = DshPluginInventory(
+            runtimeRoot = root,
+            presetManagedRowIds = DshPresetPlane.managedRowIds(read),
+            presetPlaneRows = DshPresetPlane.planeRows(read, "standard"),
+        ).read()
+        val ids = inventory.rows.map { it.patchId }
+
+        listOf(
+            "subagent-model-selection-settings",
+            "heta-preset-join",
+            "cordis-host-runner",
+            "cordis-inspect-providers",
+            "agent-preset-registry",
+            "preset-standard",
+            "preset-ptc",
+            "preset-minimal",
+            "preset-cordis",
+        ).forEach { expected ->
+            assertTrue(
+                "$expected 没进文件视图（真机上表现为这一行显示「配置里还没有这一行」）：\n$ids",
+                expected in ids,
+            )
+        }
+        // 让位那 24 行也在平面里：它们必须被读成 DISABLED（tool-bash 不在夹具的 bundle 里，
+        // 所以它正好证明"覆盖层的 disabled 行"确实被解析成了行）。
+        assertEquals(
+            "平面里的 disabled 行没被读出来",
+            DshRowState.DISABLED,
+            inventory.rows.single { it.patchId == "tool-bash" }.state,
+        )
+        assertTrue("平面解析出问题：${inventory.problems}", inventory.problems.isEmpty())
+    }
+
+    /**
+     * 平面里的行**在活的 dsh 里是开着**的（页面显示"已启用"），所以文件视图不该把它们读成
+     * "被谁关掉了"：这些 insert 行不带 `disabled`，状态应当是 ENABLED 或 UNRESOLVED，
+     * 绝不是 DISABLED（那会让人以为预设没生效）。
+     */
+    @Test
+    fun presetPlaneInsertRowsAreNotReadAsDisabled() {
+        val read: (String) -> String = { path -> asset(path) }
+        runtime() // 同上：没有覆盖层文件
+        installBundle(BASE, BASE_PATCH)
+        installBundle(ACP_APP, ACP_APP_PATCH)
+
+        val rows = DshPluginInventory(
+            runtimeRoot = root,
+            presetManagedRowIds = DshPresetPlane.managedRowIds(read),
+            presetPlaneRows = DshPresetPlane.planeRows(read, "standard"),
+        ).read().rows.associateBy { it.patchId }
+
+        listOf(
+            "agent-preset-registry",
+            "subagent-model-selection-settings",
+            "cordis-host-runner",
+            "cordis-inspect-providers",
+            "preset-standard",
+        ).forEach { id ->
+            assertTrue("$id 不在文件视图里", rows.containsKey(id))
+            assertFalse("$id 被读成了 DISABLED：${rows[id]}", rows.getValue(id).state == DshRowState.DISABLED)
+        }
+    }
+
+    /**
+     * 读一份 APK 资产。
+     *
+     * 两种跑法的 cwd 不一样：Gradle 单测的工作目录是模块目录 `app/`，本地 kotlinc harness
+     * （`scripts/test-local-dsh.sh`）把工作目录钉在仓库根。两个都认，测试才在两处都跑得起来。
+     */
+    private fun asset(path: String): String {
+        val base = listOf(File("src/main/assets"), File("app/src/main/assets")).first { it.isDirectory }
+        return File(base, path).readText()
+    }
+
     private fun runtime(
         bundles: List<String> = listOf(BASE, ACP_APP),
         profilePatch: String? = template(),

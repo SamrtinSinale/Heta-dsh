@@ -470,13 +470,44 @@ private fun LazyListScope.dshLiveSections(
     searching: Boolean,
 ) {
     if (!searching) item(key = "live_note") { DshNote(stringResource(R.string.extensions_live_note)) }
+
+    // 预设排在插件行**前面**：这一页要回答的第一个问题是"用哪一套"，插件行才是"这套里每一行
+    // 是什么"。官方客户端也是先给预设卡片。真机反馈过"预设为什么在最底部"——107 条行之后它
+    // 就等于藏起来了。
+    if (!searching && live.presets.isNotEmpty()) {
+        item(key = "presets_title") {
+            EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_presets))
+        }
+        item(key = "presets_intro") { DshNote(stringResource(R.string.extensions_preset_intro)) }
+        // 用户实测过：切换之后**下一条消息**就用新的预设，不用开新对话（每一轮 run 都是新进程 +
+        // session/resume，注册表按当前 default 重新解析）。所以这里不能照抄插件行那句
+        // "改动下次开对话才生效"，否则等于教人做多余的操作。
+        item(key = "presets_effect") { DshNote(stringResource(R.string.extensions_preset_effect)) }
+        // 一张卡片一个预设：**点整行 = 设为新任务默认**（写 App 的偏好，下一轮 run 生效）。
+        // 这里刻意**不**逐条列出组合行：那是 29×4 行的噪声，组合详情在文件视图里逐行可查。
+        live.presets.forEachIndexed { index, preset ->
+            item(key = "preset:${preset.id}") {
+                EtaPreferenceGroupItem(
+                    isFirst = index == 0,
+                    isLast = index == live.presets.lastIndex,
+                    hasLeading = true,
+                ) {
+                    DshPresetChoiceRow(store, preset)
+                }
+            }
+        }
+        // 自定义预设照官方的路子走：客户端也是"创造模式里让 Agent 写一个"，Heta 不另造一套编辑器。
+        item(key = "presets_custom") { DshNote(stringResource(R.string.extensions_preset_custom)) }
+        item(key = "presets_gap") { DshGroupGap() }
+    }
+
     // 分组标题只在过滤后有内容时才画。
     if (entries.isNotEmpty()) {
         item(key = "live_title") {
             EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_live))
         }
         // 一行一个 item（卡片外观与分割线由 EtaPreferenceGroupItem 负责，同 ProviderModelsTab 的模型
-        // 列表）：98 条活条目时也只组合看得见的那几行；"展开一行"只影响它自己那一项。
+        // 列表）：上百条活条目时也只组合看得见的那几行；"展开一行"只影响它自己那一项。
         // 行高恒定 + 详情挂在行的下面 —— 见 DshExpandableDetails。
         entries.forEachIndexed { index, entry ->
             item(key = "live_row:${entry.entryId}") {
@@ -489,28 +520,7 @@ private fun LazyListScope.dshLiveSections(
                 }
             }
         }
-        item(key = "live_rows_gap") { DshGroupGap() }
     }
-    if (searching || live.presets.isEmpty()) return
-    item(key = "presets_title") {
-        EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_presets))
-    }
-    item(key = "presets_intro") { DshNote(stringResource(R.string.extensions_preset_intro)) }
-    // 一张卡片一个预设：**点整行 = 设为新任务默认**（写 App 的偏好，下一轮 run 生效）。
-    // 这里也刻意**不**逐条列出组合行：那是 29×4 行的噪声，而"预设"要回答的是"用哪一套"，不是
-    // "这一套里第 17 行是什么"。组合详情在文件视图里逐行可查。
-    live.presets.forEachIndexed { index, preset ->
-        item(key = "preset:${preset.id}") {
-            EtaPreferenceGroupItem(
-                isFirst = index == 0,
-                isLast = index == live.presets.lastIndex,
-                hasLeading = true,
-            ) {
-                DshPresetChoiceRow(store, preset)
-            }
-        }
-    }
-    item(key = "presets_gap") { DshGroupGap() }
 }
 
 /**
@@ -534,14 +544,23 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
     val patchId = entry.patchId
     // 文件视图那一行给出两件事：这一行在补丁层里存不存在（见上面那段），以及"管理模块不许关"。
     val blocked = row?.readOnlyReason
-    val switchable = patchId != null && row != null
-    val toggleable = switchable && blocked == null && !store.working
+    // **有 patchId 就画开关**：写文件靠的是它（`setPluginEnabled(patchId, …)`），而 [row] 只提供
+    // "这一行为什么不许关"那条理由。以前把开关绑在"文件层里查得到这一行"上，于是运行时刚被重新
+    // 解包、profile 还没被 dsh 初始化时（补丁层一行都没有），整页开关**全部消失** —— 真机反馈
+    // "开关按钮怎么丢了"。查不到只是少一条理由，不该等于没有开关。
+    val switchable = patchId != null
+    val toggleable = switchable && blocked == null && row != null && !store.working
     val configState = configStateLabel(store.enabledFor(entry))
     val runtimeState = runtimeStateLabel(entry.fiberPhase)
     val summary = listOfNotNull(
         stringResource(R.string.extensions_live_summary, configState, runtimeState),
         if (patchId == null) stringResource(R.string.extensions_live_no_patch_id) else null,
-        if (patchId != null && row == null) stringResource(R.string.extensions_live_no_patch_row) else null,
+        // 文件层里查不到这一行：开关先别给点（改哪一行都不确定），并说清楚下一步怎么办。
+        if (patchId != null && row == null) {
+            stringResource(R.string.extensions_live_not_in_layer)
+        } else {
+            null
+        },
         blocked,
     ).joinToString("\n")
     // 同 DshPluginSwitchRow：整行点击 = 展开 / 收起，行尾只留开关（没有箭头按钮）；
@@ -551,9 +570,9 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
         onClick = { expanded = !expanded },
         onClickLabel = stringResource(R.string.extensions_detail_toggle),
         endActions = {
-            // 这里重复一遍 `switchable` 的两个条件，是为了让 lambda 里能直接智能转换
-            //（`patchId` / `row` 都是局部 val）—— 不然就要写 `entry.patchId!!`。
-            if (patchId != null && row != null) {
+            // 这里重复一遍条件是为了让 lambda 里能直接智能转换（`patchId` 是局部 val）——
+            // 不然就要写 `entry.patchId!!`。**只看 patchId**：文件层查不到也要画开关（见上面那段）。
+            if (patchId != null) {
                 EtaSwitch(
                     // 开关跟着**活**状态走（本地刚点过的那个优先 —— 写完文件 dsh 还没重载）：
                     // dsh 实际用的就是它，补丁层里那一行只决定下一次启动。

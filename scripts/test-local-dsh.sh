@@ -55,6 +55,9 @@ FILES=(
   "$B/DshPatchDocument.kt"
   "$B/DshProfileStore.kt"
   "$B/DshPluginInventory.kt"
+  # 预设平面：把它拉进来，才能对"真覆盖层文本"跑文件视图解析（真机那个 bug 的复现）。
+  "$B/DshPresetPlane.kt"
+  "$B/DshPresetSelection.kt"
   "$T/DshPatchDocumentTest.kt"
   "$T/DshProfileStoreTest.kt"
   "$T/DshPluginInventoryTest.kt"

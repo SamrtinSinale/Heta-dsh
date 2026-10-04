@@ -1350,6 +1350,9 @@
   <string name="extensions_detail_entry_id">條目編號</string>
   <string name="extensions_detail_runtime_state">執行狀態</string>
   <string name="extensions_live_no_patch_row">這一行的設定由執行階段自己管，這裡改不了。</string>
+  <string name="extensions_live_not_in_layer">設定檔裡沒有這一行，這裡改不了。</string>
+  <string name="extensions_preset_effect">切換後下一則訊息就生效，不用開新對話。</string>
+  <string name="extensions_preset_custom">想自己做一個模式：切到「創造模式」，讓 Agent 幫你寫一個。</string>
   <string name="extensions_live_no_patch_id">這一行沒有編號，這裡改不了。</string>
   <string name="extensions_group_presets">預設</string>
   <string name="extensions_preset_rows">%1$d 行</string>

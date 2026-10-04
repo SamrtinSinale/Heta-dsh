@@ -1384,6 +1384,9 @@
   <string name="extensions_detail_entry_id">Entry id</string>
   <string name="extensions_detail_runtime_state">Runtime state</string>
   <string name="extensions_live_no_patch_row">The runtime manages this row; it cannot be changed here.</string>
+  <string name="extensions_live_not_in_layer">This row is not in the saved settings, so it cannot be changed here.</string>
+  <string name="extensions_preset_effect">Switching takes effect on your next message — no new chat needed.</string>
+  <string name="extensions_preset_custom">To build your own mode, switch to Creator mode and ask the agent to write one.</string>
   <string name="extensions_live_no_patch_id">This row has no id, so it cannot be changed here.</string>
   <string name="extensions_group_presets">Agent presets</string>
   <string name="extensions_preset_rows">%1$d rows</string>

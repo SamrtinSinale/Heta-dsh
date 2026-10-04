@@ -1362,6 +1362,9 @@
   <string name="extensions_detail_entry_id">条目编号</string>
   <string name="extensions_detail_runtime_state">运行状态</string>
   <string name="extensions_live_no_patch_row">这一行的配置由运行时自己管，这里改不了。</string>
+  <string name="extensions_live_not_in_layer">配置文件里没有这一行，这里改不了。</string>
+  <string name="extensions_preset_effect">切换后下一条消息就生效，不用开新对话。</string>
+  <string name="extensions_preset_custom">想自己做一个模式：切到「创造模式」，让 Agent 帮你写一个。</string>
   <string name="extensions_live_no_patch_id">这一行没有编号，这里改不了。</string>
   <string name="extensions_group_presets">预设</string>
   <string name="extensions_preset_rows">%1$d 行</string>

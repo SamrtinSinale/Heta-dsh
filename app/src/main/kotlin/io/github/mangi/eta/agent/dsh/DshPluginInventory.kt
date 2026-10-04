@@ -46,6 +46,15 @@ internal class DshPluginInventory(
      * 情况下行为不变。
      */
     private val presetManagedRowIds: Set<String> = emptySet(),
+    /**
+     * 预设平面那几行（`DshPresetPlane.planeRows`）。
+     *
+     * 为什么不直接读覆盖层文件：覆盖层是**每轮 run 才生成**的，而这一页可能在"那次 run 还没
+     * 发生"时被打开（刚重装完运行时就是这种状态）—— 那时文件层里一行平面都没有，页面上就会把
+     * 正在跑的插件标成"配置里还没有这一行"（真机反馈），而且刷新也刷不出来。
+     * 这一层的文本与每轮写进覆盖层的那份**同源**（同一个生成函数），所以不会漂移。
+     */
+    private val presetPlaneRows: List<DshPatchRow> = emptyList(),
 ) {
 
     private val profileDir: File = File(runtimeRoot, "root/.dsh/profiles/$profile")
@@ -108,6 +117,11 @@ internal class DshPluginInventory(
         optionalLayer("profile 补丁层", File(profileDir, "cordis.patch.yml"), layers, problems)
         optionalLayer("home 补丁层", homePatchFile, layers, problems)
         optionalLayer("Heta 覆盖层", overlayFile, layers, problems)
+        // 平面排在最后（它也是真启动里优先级最高的那一层）。覆盖层已经存在时，这两处的行是同一批
+        // patchId，[merge] 会并按 id 合并 —— 幂等，不会出现两份。
+        if (presetPlaneRows.isNotEmpty()) {
+            layers += DshPatchLayer("Heta 预设平面", presetPlaneRows)
+        }
 
         return DshInventory(bundles = bundles, rows = merge(layers), problems = problems)
     }

@@ -134,6 +134,21 @@ internal object DshPresetPlane {
             .append('\n')
     }
 
+    /**
+     * 平面那几行（**不依赖任何文件**）。
+     *
+     * 为什么要有这个入口：平面是每轮 run 才写进 `opt/dsh/heta-run-overlay.patch.yml` 的，而
+     * 「扩展」页读文件视图时那次 run 可能还没发生 —— 刚重装完运行时（`REVISION` 变了会整棵树
+     * 重解包）、还没开始任何对话，那个覆盖层文件根本不存在。于是文件层里一行平面都没有，页面上
+     * 把十行**正在跑**的插件标成"配置里还没有这一行"，用户点刷新也刷不出来（真机反馈：
+     * "刷新是个空壳"）。平面内容是 Heta 自己生成的，直接当一层交给清单就是**同一份文本**，
+     * 不存在与文件漂移的可能。
+     *
+     * 解析失败返回空列表（页面照旧能用，只是少这几行）——不抛异常给界面。
+     */
+    fun planeRows(read: (String) -> String, selected: String): List<DshPatchRow> =
+        runCatching { DshPatchDocument.parse(overlay(read, selected)).rows }.getOrDefault(emptyList())
+
     /** join 插件的全文（写进 runtime root，覆盖层里用相对名 `./heta-preset-join.mjs` 引用它）。 */
     fun joinPlugin(read: (String) -> String): String = read(JOIN_ASSET)
 

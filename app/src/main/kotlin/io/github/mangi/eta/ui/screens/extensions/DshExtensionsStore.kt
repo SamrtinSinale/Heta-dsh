@@ -181,6 +181,14 @@ internal class DshExtensionsStore(
         // 文件视图一落地就放开 loading：探针要几秒，没必要让整页干等它（这一页的底线是不空白）。
         loading = false
         readLiveInventory(explicit)
+        // 补一次重读：**dsh 自己会在第一次运行时把 profile 建出来**（package.json + cordis.patch.yml），
+        // 而上面那次读发生在探针之前 —— 运行时刚被重新解包（REVISION 变了）时，读到的就是一个还没
+        // 初始化的 profile：`DshPluginInventory` 只把"选中"的 bundle 记账，selected 为空 ⇒ 补丁层
+        // 一行都没有 ⇒ 页面上"所有开关都不见了、两个插件包还显示成关着"（2026-10-04 真机反馈）。
+        // 探针这一次已经把 dsh 跑起来了，profile 此刻已经存在，再读一次就与真实组合一致。
+        if (inventory?.rows.isNullOrEmpty()) {
+            readFileInventory()
+        }
     }
 
     /**
@@ -202,6 +210,12 @@ internal class DshExtensionsStore(
                 DshPluginInventory(
                     runtimeRoot = runtimeRoot,
                     presetManagedRowIds = DshPresetPlane.managedRowIdsFor(appContext),
+                    // 平面直接由资产生成、不依赖覆盖层文件存在（见 DshPresetPlane.planeRows）：
+                    // 刚重装完运行时、还没开始任何对话时，文件视图也能如实显示这几行。
+                    presetPlaneRows = DshPresetPlane.planeRows(
+                        DshPresetPlane.reader(appContext),
+                        DshPresetPlane.selectedFor(appContext),
+                    ),
                 ).read()
             }
         }
