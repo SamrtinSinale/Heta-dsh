@@ -21,6 +21,10 @@
 #       → Compose 组件 → `hook/xiaoai`：错误驱动的补齐会**爆炸**。
 #     · `SharedFolderMounts`（要 `config.Prefs`）、`TerminalRuntime`（要 `RootAccess` +
 #       `AgentExecutionService`）同理。
+#     · UI 的**渲染**问题一律看不见：能编译、逻辑也对，但布局/文字不出来。真机实测过一次 ——
+#       3.0.7.4 的「扩展」页不展开时整行空白（`EtaPreferenceRow` 是"给了 titleContent 就不看
+#       title/summary"的二选一，我两个都传了）。改 `Eta*` 组件的用法，要照仓库里已有的**同形**
+#       写法抄（例如 `SkillSwitchRow`），别凭参数名想当然。
 #   ⇒ 结论：本地编译**只覆盖低依赖的 core/ 几个文件 + 两个常量**；凡是要碰终端控制器、
 #     运行时服务或 UI 的改动，验证仍然只能靠 CI。这是这个工具的**已知上限**，不是能靠加文件解决的。
 #

@@ -1358,4 +1358,12 @@
   <string name="extensions_message_saved">Written; the inventory was read again.</string>
   <string name="extensions_message_unchanged">Already in that state; nothing was written.</string>
   <string name="extensions_write_failed">Write failed: %1$s</string>
+  <string name="extensions_detail_toggle">Show details</string>
+  <string name="extensions_detail_full_name">Full name</string>
+  <string name="extensions_detail_patch_id">Patch row id</string>
+  <string name="extensions_detail_config_state">Config state</string>
+  <string name="extensions_detail_source">Comes from</string>
+  <string name="extensions_state_enabled">Enabled</string>
+  <string name="extensions_state_disabled">Disabled</string>
+  <string name="extensions_no_module_name">(no module name declared)</string>
 </resources>

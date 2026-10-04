@@ -1324,4 +1324,12 @@
   <string name="extensions_message_saved">已寫入，清單已重新讀取。</string>
   <string name="extensions_message_unchanged">本來就是這狀態，沒有改動檔案。</string>
   <string name="extensions_write_failed">寫入失敗：%1$s</string>
+  <string name="extensions_detail_toggle">展開詳情</string>
+  <string name="extensions_detail_full_name">完整名稱</string>
+  <string name="extensions_detail_patch_id">補丁行 id</string>
+  <string name="extensions_detail_config_state">配置狀態</string>
+  <string name="extensions_detail_source">來自</string>
+  <string name="extensions_state_enabled">已啟用</string>
+  <string name="extensions_state_disabled">已停用</string>
+  <string name="extensions_no_module_name">（沒有宣告模組名）</string>
 </resources>

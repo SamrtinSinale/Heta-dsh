@@ -3,21 +3,29 @@ package io.github.mangi.eta.ui.screens.extensions
 import android.content.Context
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshInventoryBundle
 import io.github.mangi.eta.agent.dsh.DshInventoryRow
 import io.github.mangi.eta.agent.dsh.DshRowState
+import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupTitle
+import io.github.mangi.eta.ui.components.EtaSwitch
 import io.github.mangi.eta.ui.components.EtaSwitchPreference
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.MiuixScaffoldPage
@@ -171,24 +179,96 @@ private fun DshBundleSwitchRow(store: DshExtensionsStore, bundle: DshInventoryBu
 
 @Composable
 private fun DshPluginSwitchRow(store: DshExtensionsStore, row: DshInventoryRow) {
+    // 展开状态跟着这一行（patchId）走，不是跟着列表走。
+    var expanded by remember(row.patchId) { mutableStateOf(false) }
     val unresolved = row.state == DshRowState.UNRESOLVED
+    val toggleable = !unresolved && !store.working && row.readOnlyReason == null
     val unresolvedNote = if (unresolved) stringResource(R.string.extensions_row_unresolved) else null
     val patchedNote = if (row.mentionedBy.isEmpty()) {
         null
     } else {
         stringResource(R.string.extensions_row_mentioned_by, row.mentionedBy.joinToString(", "))
     }
-    EtaSwitchPreference(
-        // moduleName 只有声明层写了才有；只写覆盖的行只能用补丁 id 认，那就是它唯一的名字。
-        title = row.moduleName ?: row.patchId,
-        summary = listOfNotNull(unresolvedNote, patchedNote, row.readOnlyReason)
-            .takeIf { it.isNotEmpty() }
-            ?.joinToString("\n"),
-        checked = row.state == DshRowState.ENABLED,
-        // UNRESOLVED 是"表达式决定 / 判断不了"，不是一个"关着"的状态；管理/入口模块则是"不许关"：
-        // 两种情况都禁掉开关，只是理由不同（理由跟着 summary 一起显示）。
-        enabled = !unresolved && !store.working && row.readOnlyReason == null,
-        onCheckedChange = { store.setPluginEnabled(row, it) },
+    val summary = listOfNotNull(unresolvedNote, patchedNote, row.readOnlyReason).joinToString("\n")
+    // 用 EtaPreference 而不是 EtaSwitchPreference：后者整行都是开关，没地方再放"展开"。
+    // 行本身不带 onClick（开关和展开各自可点），灰行也能展开看细节。
+    EtaPreference(
+        enabled = toggleable,
+        endActions = {
+            EtaSwitch(
+                checked = row.state == DshRowState.ENABLED,
+                onCheckedChange = { store.setPluginEnabled(row, it) },
+                enabled = toggleable,
+            )
+            IconButton(onClick = { expanded = !expanded }) {
+                Icon(
+                    imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = stringResource(R.string.extensions_detail_toggle),
+                )
+            }
+        },
+    ) {
+        // `EtaPreferenceRow` 是"给了 titleContent 就不看 title/summary"（二选一），所以标题与说明
+        // 必须在这里自己画（同 `SkillSwitchRow`）—— 3.0.7.4 两个都传了，结果不展开时整行是空的。
+        Text(
+            text = row.moduleName ?: row.patchId,
+            style = MiuixTheme.textStyles.body1,
+            fontWeight = FontWeight.Medium,
+            color = if (toggleable) {
+                MiuixTheme.colorScheme.onBackground
+            } else {
+                MiuixTheme.colorScheme.disabledOnSurface
+            },
+        )
+        if (summary.isNotEmpty()) {
+            Text(
+                text = summary,
+                style = MiuixTheme.textStyles.body2,
+                color = if (toggleable) {
+                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                } else {
+                    MiuixTheme.colorScheme.disabledOnSurface
+                },
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        if (expanded) {
+            // 只放我们**真的知道**的四项。运行状态（官方那页的"运行中"）来自 dsh 进程里的活
+            // 条目，补丁层里看不到 —— 宁可不显示，也不编一个出来。
+            DshDetailLine(
+                label = stringResource(R.string.extensions_detail_full_name),
+                value = row.moduleName ?: stringResource(R.string.extensions_no_module_name),
+            )
+            DshDetailLine(
+                label = stringResource(R.string.extensions_detail_patch_id),
+                value = row.patchId,
+            )
+            DshDetailLine(
+                label = stringResource(R.string.extensions_detail_config_state),
+                value = stringResource(
+                    when (row.state) {
+                        DshRowState.ENABLED -> R.string.extensions_state_enabled
+                        DshRowState.DISABLED -> R.string.extensions_state_disabled
+                        DshRowState.UNRESOLVED -> R.string.extensions_row_unresolved
+                    },
+                ),
+            )
+            DshDetailLine(
+                label = stringResource(R.string.extensions_detail_source),
+                value = row.source,
+            )
+        }
+    }
+}
+
+/** 展开后的一行「名字：值」。 */
+@Composable
+private fun DshDetailLine(label: String, value: String) {
+    Text(
+        text = "$label：$value",
+        style = MiuixTheme.textStyles.footnote1,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier.padding(top = 2.dp),
     )
 }
 
