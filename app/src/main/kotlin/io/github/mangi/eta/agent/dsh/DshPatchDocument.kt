@@ -136,6 +136,15 @@ internal data class DshPatchRow(
     /** 该行声明的模块名（官方 `moduleName`）；只做覆盖的行常常不写。 */
     val moduleName: String?,
     val state: DshRowState,
+    /**
+     * 这条**自己**有没有提 `disabled`。
+     *
+     * 合并多层时非知道这个不可：dsh 的补丁是**逐字段**盖上去的（只有 `config` 是整块替换，
+     * 见 `dsh-base/cordis.patch.yml` 自己的说明），所以后一层只写了别的字段的行**不能**把
+     * 前一层的 `disabled: true` 抹成"启用"。而 [state] 把"没提"和"提了 false"都表示成
+     * ENABLED —— 光看它分不出这两种。
+     */
+    val overridesDisabled: Boolean,
 )
 
 /** 解析结果（纯数据）。 */
@@ -184,7 +193,9 @@ private val RESERVED_SCALAR = Regex("^(true|false|null|~|-?\\d+(\\.\\d+)?)$", Re
 
 private fun scan(text: String): Patch {
     val empty = emptyList<Item>()
-    if (text.contains('\r')) {
+    // js-yaml 容忍开头的 BOM（用户用记事本改过就有），所以也容忍：只吃掉它，别把它当成正文。
+    val content = text.removePrefix("\uFEFF")
+    if (content.contains('\r')) {
         return Patch(
             lines = emptyList(),
             items = empty,
@@ -197,9 +208,9 @@ private fun scan(text: String): Patch {
     }
 
     val lines = when {
-        text.isBlank() -> emptyList()
-        text.endsWith("\n") -> text.dropLast(1).split("\n")
-        else -> text.split("\n")
+        content.isBlank() -> emptyList()
+        content.endsWith("\n") -> content.dropLast(1).split("\n")
+        else -> content.split("\n")
     }
     val items = ArrayList<Item>()
     val open = ArrayList<Item>()
@@ -271,7 +282,12 @@ private fun scan(text: String): Patch {
         val id = item.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         // 带 insert 的条目是**分组**，它的 id 不是插件（官方开关时也排除这类）。
         if (item.hasInsert) return@mapNotNull null
-        DshPatchRow(patchId = id, moduleName = item.name, state = item.disabled.state())
+        DshPatchRow(
+            patchId = id,
+            moduleName = item.name,
+            state = item.disabled.state(),
+            overridesDisabled = item.disabledLine != null,
+        )
     }
     return Patch(
         lines = lines,

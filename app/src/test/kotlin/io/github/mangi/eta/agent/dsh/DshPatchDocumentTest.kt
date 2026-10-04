@@ -219,6 +219,15 @@ class DshPatchDocumentTest {
     }
 
     @Test
+    fun toleratesALeadingByteOrderMark() {
+        // 记事本改过的文件会带 UTF-8 BOM，js-yaml 认它，所以我们也得认 —— 不然会"看不懂"一份
+        // dsh 明明能读的文件。（改过之后 BOM 不再写回去，这是有意的：它没有语义。）
+        val document = DshPatchDocument.parse("\uFEFF# 注释\n- id: x\n  disabled: true\n")
+        assertNull(document.rejection)
+        assertEquals(DshRowState.DISABLED, document.rows.single().state)
+    }
+
+    @Test
     fun rejectsARootMapping() {
         assertTrue(DshPatchDocument.parse("key: value\n").rejection != null)
         assertTrue(DshPatchDocument.parse("{}\n").rejection != null)

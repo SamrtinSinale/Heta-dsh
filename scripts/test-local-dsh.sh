@@ -54,8 +54,10 @@ T=app/src/test/kotlin/io/github/mangi/eta/agent/dsh
 FILES=(
   "$B/DshPatchDocument.kt"
   "$B/DshProfileStore.kt"
+  "$B/DshPluginInventory.kt"
   "$T/DshPatchDocumentTest.kt"
   "$T/DshProfileStoreTest.kt"
+  "$T/DshPluginInventoryTest.kt"
 )
 
 echo "本地编译：${#FILES[@]} 个文件"
@@ -71,6 +73,7 @@ echo "本地单测："
 java -cp "$OUT/classes:$JSONJAR:$JUNIT:$HAMCREST:$SNAKEYAML:$KOTLIN_LIB/kotlin-stdlib.jar" \
   org.junit.runner.JUnitCore \
   io.github.mangi.eta.agent.dsh.DshPatchDocumentTest \
+  io.github.mangi.eta.agent.dsh.DshPluginInventoryTest \
   io.github.mangi.eta.agent.dsh.DshProfileStoreTest
 code=$?
 echo "单测 exit=$code（总计 $(( $(date +%s) - start )) 秒）"

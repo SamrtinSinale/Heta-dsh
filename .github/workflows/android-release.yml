@@ -277,6 +277,12 @@ jobs:
       - name: Kotlin 注释嵌套自检
         run: python3 scripts/check-kotlin-comment-nesting.py
 
+      # 交叉验证的真值：dsh 自己算出来的组合结果。--dump-config 不挂载插件、不求值 !!js，
+      # 所以架构无关，用 runner 的 node 就行（不需要 qemu、不联网）。变量经 $GITHUB_ENV 传给下一步，
+      # 单测里的 DshPluginInventoryTest 拿它与 Kotlin 侧算出来的行逐条对比。
+      - name: 准备 dsh 自己的组合结果（交叉验证用）
+        run: bash scripts/test-dsh-inventory.sh >> "$GITHUB_ENV"
+
       - name: 运行单元测试
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
