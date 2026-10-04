@@ -6,7 +6,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshInventory
+import io.github.mangi.eta.agent.dsh.DshInventoryProbe
 import io.github.mangi.eta.agent.dsh.DshInventoryRow
+import io.github.mangi.eta.agent.dsh.DshLiveEntry
+import io.github.mangi.eta.agent.dsh.DshLiveInventory
 import io.github.mangi.eta.agent.dsh.DshPluginInventory
 import io.github.mangi.eta.agent.dsh.DshProfileStore
 import io.github.mangi.eta.agent.dsh.DshProfileWrite
@@ -49,6 +52,28 @@ internal class DshExtensionsStore(
     var inventory by mutableStateOf<DshInventory?>(null)
         private set
 
+    /**
+     * 活清单（dsh 进程里的真实状态）。null = 取不到，此时页面退回 [inventory] 的文件视图。
+     *
+     * 为什么与 [inventory] 并存而不是取代它：bundle 的开关、写文件的目标、以及"补丁层哪里坏了"
+     * 只有文件视图知道；活清单知道的是"dsh 到底挂了什么、跑成什么样"。两条路径各自都有对方看不见
+     * 的东西，所以都留着。
+     */
+    var live by mutableStateOf<DshLiveInventory.Ready?>(null)
+        private set
+
+    /** 探针失败的原因。界面把它**显示出来**再退回文件视图 —— 不能因为探针失败就让整页空白。 */
+    var liveProblem by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * 探针在读。
+     *
+     * 它要真起一次 dsh，几秒级；不给这个标志的话，开页面那一下看起来就是"点了没反应"。
+     */
+    var liveLoading by mutableStateOf(false)
+        private set
+
     /** 结果提示；写入被拒绝时它就是数据层给的理由原文。 */
     var message by mutableStateOf<String?>(null)
         private set
@@ -70,6 +95,8 @@ internal class DshExtensionsStore(
                 if (!ready) {
                     // 运行时不在时读出来只会是一屏"找不到这个包"：那不是这个页面要说的事。
                     inventory = null
+                    live = null
+                    liveProblem = null
                     return@launch
                 }
                 val result = withContext(Dispatchers.IO) {
@@ -93,11 +120,52 @@ internal class DshExtensionsStore(
                         fail(R.string.extensions_load_failed, error)
                     },
                 )
+                // 活清单是**独立一步**：文件视图读坏了不影响它，它失败也只让插件行退回文件视图
+                // —— 两条路径谁也不许把对方判死（这一页的底线是不能空白）。
+                //
+                // 放在文件视图之后：无论探针成不成，bundle 那一组和开关都必须先有数据。
+                liveLoading = true
+                try {
+                    // 探针会走 su + chroot（阻塞在 waitFor 上），必须在 IO 上下文里。
+                    when (val probe = withContext(Dispatchers.IO) { DshInventoryProbe.read(appContext) }) {
+                        is DshLiveInventory.Ready -> {
+                            live = probe
+                            liveProblem = null
+                        }
+
+                        is DshLiveInventory.Failed -> {
+                            live = null
+                            liveProblem = probe.reason
+                        }
+                    }
+                } finally {
+                    liveLoading = false
+                }
             } finally {
                 working = false
                 loading = false
             }
         }
+    }
+
+    /**
+     * 活清单里的一行 → 补丁层里可写的那一行。查不到就返回 null（界面上不给开关）。
+     *
+     * 两边的 id **不是同一个空间**：补丁层里写的是 `acp` / `hmr`，而 Loader 树里的 id 是
+     * `include:acp` —— dsh 的 include 插件会给子条目加上"父 id + 冒号"的前缀（根那条
+     * `cordis:include` 的 id 就是 `include`，本机实测）。所以先用原样、再用去掉第一段前缀的
+     * 候选去查。两个都查不到就是"补丁层里没有这一行"（例如探针自己挂的
+     * `include:heta-inventory-bridge`），那一行只显示状态、不给开关 —— 编一个 id 写进配置
+     * 只会把 profile 改坏。
+     *
+     * 不做"按模块名猜"的兜底：同一个模块名可能对应好几行（实测 `@deepseek-ai/dsh-tool-subagent`
+     * 同时是 `tool-subagent` 与 `tool-subagent-fork`），猜错就是改错行。
+     */
+    fun patchRowFor(entry: DshLiveEntry): DshInventoryRow? {
+        val rows = inventory?.rows ?: return null
+        val namespaced = entry.entryId.substringAfter(':', missingDelimiterValue = "")
+        return rows.firstOrNull { it.patchId == entry.entryId }
+            ?: rows.firstOrNull { namespaced.isNotEmpty() && it.patchId == namespaced }
     }
 
     /** 选 / 禁一个 bundle：改 profile 清单里的 `dsh.profile.bundles`。 */

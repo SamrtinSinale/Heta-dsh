@@ -1332,4 +1332,23 @@
   <string name="extensions_state_enabled">已啟用</string>
   <string name="extensions_state_disabled">已停用</string>
   <string name="extensions_no_module_name">（沒有宣告模組名）</string>
+  <string name="extensions_live_loading">正在起一次 dsh 讀活清單...</string>
+  <string name="extensions_live_unavailable">活清單沒讀出來（%1$s），這一頁退回補丁層檢視。</string>
+  <string name="extensions_live_note">執行狀態來自一次臨時啟動的 dsh。那次啟動為了騰出 stdio 關掉了 ACP 橋（acp），所以它在這份清單裡顯示為已停用 —— 真實對話時它是啟用的。</string>
+  <string name="extensions_group_live">外掛（活清單）</string>
+  <string name="extensions_live_summary">%1$s · %2$s</string>
+  <string name="extensions_run_phase_none">未掛載</string>
+  <string name="extensions_run_phase_pending">等待中</string>
+  <string name="extensions_run_phase_loading">載入中</string>
+  <string name="extensions_run_phase_active">執行中</string>
+  <string name="extensions_run_phase_failed">失敗</string>
+  <string name="extensions_run_phase_unloading">卸載中</string>
+  <string name="extensions_detail_entry_id">Loader 條目 id</string>
+  <string name="extensions_detail_runtime_state">執行狀態</string>
+  <string name="extensions_live_no_patch_row">profile 補丁層裡沒有對應行，這裡改不了它（終端裡仍然可以）。</string>
+  <string name="extensions_group_presets">預設</string>
+  <string name="extensions_preset_rows">%1$d 行</string>
+  <string name="extensions_preset_default">預設</string>
+  <string name="extensions_preset_conditional">由表達式決定</string>
+  <string name="extensions_preset_condition">條件</string>
 </resources>

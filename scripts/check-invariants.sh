@@ -98,6 +98,12 @@ echo "=== root 进程启动点必须登记 ==="
 # 类别（按 docs/ROOT_COMMAND_SURVEY.md 的结论 B：只对新代码立规矩）：
 #   统一入口    —— BoundedRootCommandExecutor / ShellProcessSupervisor
 #   已评估保留  —— 结论 B 明确不迁，且各有语义性例外（见调查报告的 E1–E8）
+#   清单快照探针 —— DshInventoryProbe：**一次性**（跑完就 exec 进 dsh、拿一行 JSON 就退）、
+#                  有 60 秒超时（超时 destroyForcibly）、stdout 与 stderr 都重定向到文件
+#                  （不是管道，所以没有 64KB 写满卡死那条路）。它既不是长生命周期执行器，
+#                  也不复用实例：每次读活清单都是一条独立的 su，页面一离开就没人等它。
+#                  不走统一入口是因为那条路的语义是"挂起等待并回传输出"，而这里要的是
+#                  "起 dsh、读一行 marker、退" —— 用统一入口反而要给它加一个专属分支。
 #
 # 新的 su 调用点请走统一入口；确实要自己 spawn 的，在此登记并写明理由。
 # 长生命周期执行器不要每条命令建一个实例（那会架空取消语义，见报告 L7）。
@@ -110,6 +116,7 @@ check "root 进程启动点（白名单外文件数）" 0 "$(
     | grep -vE 'agent/terminal/DetachedTaskSupervisor\.kt$' \
     | grep -vE 'agent/dsh/DshRuntimeInstaller\.kt$' \
     | grep -vE 'agent/dsh/DshAcpClient\.kt$' \
+    | grep -vE 'agent/dsh/DshInventoryProbe\.kt$' \
     | grep -vE 'agent/device/RootShellDeviceController\.kt$' \
     | grep -vE 'systemizer/GoogleAppSystemizerInstaller\.kt$' \
     | wc -l

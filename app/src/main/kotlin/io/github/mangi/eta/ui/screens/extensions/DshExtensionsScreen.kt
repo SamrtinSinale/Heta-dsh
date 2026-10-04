@@ -2,6 +2,7 @@ package io.github.mangi.eta.ui.screens.extensions
 
 import android.content.Context
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -20,6 +21,10 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshInventoryBundle
 import io.github.mangi.eta.agent.dsh.DshInventoryRow
+import io.github.mangi.eta.agent.dsh.DshLiveEntry
+import io.github.mangi.eta.agent.dsh.DshLiveInventory
+import io.github.mangi.eta.agent.dsh.DshLivePreset
+import io.github.mangi.eta.agent.dsh.DshLivePresetRow
 import io.github.mangi.eta.agent.dsh.DshRowState
 import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
@@ -31,6 +36,7 @@ import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.MiuixScaffoldPage
 import io.github.mangi.eta.ui.components.StatusError
 import io.github.mangi.eta.ui.components.StatusSuccess
+import io.github.mangi.eta.ui.components.StatusWarning
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
@@ -90,6 +96,24 @@ internal fun DshExtensionsScreen(context: Context, onBack: () -> Unit) {
             }
             return@MiuixScaffoldPage
         }
+        // 活清单的两种非正常状态先说出来：探针失败**不是**错误页，它是"这一页改用补丁层视图"，
+        // 所以用提示色而不是错误色，并且照旧把文件视图渲染在下面。
+        val live = store.live
+        val liveProblem = store.liveProblem
+        if (liveProblem != null) {
+            item(key = "live_problem") {
+                DshNote(
+                    text = stringResource(R.string.extensions_live_unavailable, liveProblem),
+                    color = StatusWarning,
+                )
+            }
+        }
+        if (store.liveLoading) {
+            item(key = "live_loading") {
+                DshNote(stringResource(R.string.extensions_live_loading))
+            }
+        }
+
         val inventory = store.inventory
         if (inventory == null) {
             item(key = "unreadable") {
@@ -115,26 +139,32 @@ internal fun DshExtensionsScreen(context: Context, onBack: () -> Unit) {
             }
         }
 
-        // groupBy 用 LinkedHashMap：组标题就是 source（bundle 包名 / profile 补丁层 / home 补丁层 /
-        // Heta 覆盖层），按首次出现排序，与清单里的合并顺序一致。
-        inventory.rows.groupBy { it.source }.forEach { (source, rows) ->
-            item(key = "source_title:$source") { EtaPreferenceGroupTitle(source) }
-            item(key = "source_rows:$source") {
-                EtaPreferenceGroup {
-                    rows.forEachIndexed { index, row ->
-                        if (index > 0) EtaPreferenceDivider()
-                        DshPluginSwitchRow(store, row)
+        if (live != null) {
+            // 活清单可用：插件行按官方那页的字段渲染（模块名 / 配置状态 / 运行状态 / 预设）。
+            dshLiveSections(store, live)
+        } else {
+            // 取不到活清单：保持原来的文件视图（按补丁层来源分组），开关照旧写 profile 文件。
+            // groupBy 用 LinkedHashMap：组标题就是 source（bundle 包名 / profile 补丁层 / home 补丁层 /
+            // Heta 覆盖层），按首次出现排序，与清单里的合并顺序一致。
+            inventory.rows.groupBy { it.source }.forEach { (source, rows) ->
+                item(key = "source_title:$source") { EtaPreferenceGroupTitle(source) }
+                item(key = "source_rows:$source") {
+                    EtaPreferenceGroup {
+                        rows.forEachIndexed { index, row ->
+                            if (index > 0) EtaPreferenceDivider()
+                            DshPluginSwitchRow(store, row)
+                        }
                     }
                 }
             }
-        }
 
-        if (inventory.rows.isEmpty()) {
-            item(key = "rows_empty") {
-                ListEmptyState(
-                    title = stringResource(R.string.extensions_empty_title),
-                    summary = stringResource(R.string.extensions_empty_summary),
-                )
+            if (inventory.rows.isEmpty()) {
+                item(key = "rows_empty") {
+                    ListEmptyState(
+                        title = stringResource(R.string.extensions_empty_title),
+                        summary = stringResource(R.string.extensions_empty_summary),
+                    )
+                }
             }
         }
 
@@ -296,4 +326,187 @@ private fun DshProblem(text: String, modifier: Modifier = Modifier) {
         color = MiuixTheme.colorScheme.error,
         modifier = modifier,
     )
+}
+
+/**
+ * 活清单那一段：插件行 + 预设。
+ *
+ * 为什么开关仍落在**文件**上：官方的开关走 dsh 的 `pluginManager` op，而 ACP 通道没有 remote
+ * 出口 —— 所以开关照旧写 profile 补丁层（[DshExtensionsStore.setPluginEnabled]），
+ * **下一次对话生效**（hmr 在 profile 里是关的，页面顶上那条说明一直在说这件事）。
+ */
+private fun LazyListScope.dshLiveSections(store: DshExtensionsStore, live: DshLiveInventory.Ready) {
+    item(key = "live_note") { DshNote(stringResource(R.string.extensions_live_note)) }
+    item(key = "live_title") {
+        EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_live))
+    }
+    item(key = "live_rows") {
+        EtaPreferenceGroup {
+            live.entries.forEachIndexed { index, entry ->
+                if (index > 0) EtaPreferenceDivider()
+                DshLiveSwitchRow(store, entry)
+            }
+        }
+    }
+    if (live.presets.isEmpty()) return
+    item(key = "presets_title") {
+        EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_presets))
+    }
+    live.presets.forEachIndexed { index, preset ->
+        // key 带上序号：预设 id 理论上唯一，但重复时不该让 Compose 抛"key 重复"。
+        item(key = "preset:$index:${preset.id}") { DshPresetRows(preset) }
+    }
+}
+
+/** 活清单里的一行插件。开关只在"补丁层里找得到对应行"时才给（见 `DshExtensionsStore.patchRowFor`）。 */
+@Composable
+private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
+    // 展开状态跟着这一条 Loader 条目走，不是跟着列表走。
+    var expanded by remember(entry.entryId) { mutableStateOf(false) }
+    val row = store.patchRowFor(entry)
+    val toggleable = row != null && !store.working && row.readOnlyReason == null
+    val configState = configStateLabel(entry.enabled)
+    // 用 EtaPreference 而不是 EtaSwitchPreference：后者整行都是开关，没地方再放"展开"。
+    EtaPreference(
+        enabled = toggleable,
+        endActions = {
+            if (row != null) {
+                EtaSwitch(
+                    // 开关跟着**活**状态走：dsh 实际用的就是它，补丁层里那一行只决定下一次启动。
+                    checked = entry.enabled,
+                    onCheckedChange = { store.setPluginEnabled(row, it) },
+                    enabled = toggleable,
+                )
+            }
+            IconButton(onClick = { expanded = !expanded }) {
+                Icon(
+                    imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = stringResource(R.string.extensions_detail_toggle),
+                )
+            }
+        },
+    ) {
+        // `EtaPreferenceRow` 是"给了 titleContent 就不看 title/summary"（二选一），所以标题与说明
+        // 必须在这里自己画（同 DshPluginSwitchRow）—— 两个都传会让整行空白。
+        Text(
+            text = entry.moduleName,
+            style = MiuixTheme.textStyles.body1,
+            fontWeight = FontWeight.Medium,
+            color = if (toggleable) {
+                MiuixTheme.colorScheme.onBackground
+            } else {
+                MiuixTheme.colorScheme.disabledOnSurface
+            },
+        )
+        Text(
+            text = stringResource(
+                R.string.extensions_live_summary,
+                configState,
+                runtimeStateLabel(entry.fiberPhase),
+            ),
+            style = MiuixTheme.textStyles.body2,
+            color = if (toggleable) {
+                MiuixTheme.colorScheme.onSurfaceVariantSummary
+            } else {
+                MiuixTheme.colorScheme.disabledOnSurface
+            },
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        if (expanded) {
+            DshDetailLine(stringResource(R.string.extensions_detail_entry_id), entry.entryId)
+            DshDetailLine(stringResource(R.string.extensions_detail_full_name), entry.moduleName)
+            DshDetailLine(stringResource(R.string.extensions_detail_config_state), configState)
+            DshDetailLine(
+                stringResource(R.string.extensions_detail_runtime_state),
+                runtimeStateLabel(entry.fiberPhase),
+            )
+            if (row == null) {
+                DshProblem(
+                    text = stringResource(R.string.extensions_live_no_patch_row),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            } else {
+                DshDetailLine(stringResource(R.string.extensions_detail_patch_id), row.patchId)
+                DshDetailLine(stringResource(R.string.extensions_detail_source), row.source)
+            }
+        }
+    }
+}
+
+/** 一个预设：名字 + 行数 + 默认标记，下面逐条列出它的组合行。 */
+@Composable
+private fun DshPresetRows(preset: DshLivePreset) {
+    EtaPreferenceGroup {
+        EtaPreference {
+            Text(
+                text = preset.name,
+                style = MiuixTheme.textStyles.body1,
+                fontWeight = FontWeight.Medium,
+                color = MiuixTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = listOfNotNull(
+                    stringResource(R.string.extensions_preset_rows, preset.rows.size),
+                    if (preset.isDefault) stringResource(R.string.extensions_preset_default) else null,
+                ).joinToString(" · "),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        preset.rows.forEach { row ->
+            EtaPreferenceDivider()
+            EtaPreference {
+                Text(
+                    text = row.moduleName,
+                    style = MiuixTheme.textStyles.body1,
+                    color = MiuixTheme.colorScheme.onBackground,
+                )
+                Text(
+                    text = presetRowState(row),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                row.condition?.let {
+                    DshDetailLine(stringResource(R.string.extensions_preset_condition), it)
+                }
+                row.entryId?.let {
+                    DshDetailLine(stringResource(R.string.extensions_detail_entry_id), it)
+                }
+            }
+        }
+    }
+}
+
+/** 配置状态：dsh 报的 `enabled` 是什么就说什么。 */
+@Composable
+private fun configStateLabel(enabled: Boolean): String = stringResource(
+    if (enabled) R.string.extensions_state_enabled else R.string.extensions_state_disabled,
+)
+
+/**
+ * 运行状态：Fiber 的 phase。
+ *
+ * 未知取值**原样显示**：dsh 以后新增一个状态时，显示 `reloading` 也好过我们替它编一个中文名
+ * —— 编出来的名字会把"我们没跟上"伪装成"我们知道"。
+ */
+@Composable
+private fun runtimeStateLabel(phase: String?): String = when (phase) {
+    null -> stringResource(R.string.extensions_run_phase_none)
+    "pending" -> stringResource(R.string.extensions_run_phase_pending)
+    "loading" -> stringResource(R.string.extensions_run_phase_loading)
+    "active" -> stringResource(R.string.extensions_run_phase_active)
+    "failed" -> stringResource(R.string.extensions_run_phase_failed)
+    "unloading" -> stringResource(R.string.extensions_run_phase_unloading)
+    else -> phase
+}
+
+/** 预设行的配置状态：布尔就是启用/禁用，`conditional` 是"由表达式决定"（不是禁用）。 */
+@Composable
+private fun presetRowState(row: DshLivePresetRow): String = when {
+    row.conditional -> stringResource(R.string.extensions_preset_conditional)
+    row.enabled == true -> stringResource(R.string.extensions_state_enabled)
+    row.enabled == false -> stringResource(R.string.extensions_state_disabled)
+    else -> stringResource(R.string.extensions_row_unresolved)
 }

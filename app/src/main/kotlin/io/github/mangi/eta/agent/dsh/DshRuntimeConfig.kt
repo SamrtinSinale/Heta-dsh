@@ -338,7 +338,13 @@ internal data class DshRuntimeConfig(
         private const val ACP_PROFILE = "acp"
         private const val DEFAULT_ROUTE = "deepseek-official"
 
-        private const val PERMISSION_MODE = "danger-full-access"
+        /**
+         * dsh 的审批策略：`danger-full-access` => policy=never，即不再向客户端要审批。
+         *
+         * `internal` 而不是 `private`：同一个包里的清单探针要复用这一个字面量 ——
+         * 抄第二份就总有一天只改一处，而那一处决定了那次 dsh 会不会弹审批。
+         */
+        internal const val PERMISSION_MODE = "danger-full-access"
         private const val TAG = "DshRuntimeConfig"
 
         /**
@@ -349,8 +355,13 @@ internal data class DshRuntimeConfig(
          * dsh 换了这句文案时这里会滞后，但滞后只影响「模型看到的前缀措辞」。
          */
         private const val PERSONA_PREFIX = "You are a coding agent powered by the {{model}} model."
-        /** 前段是宿主的 Android 路径（su、chroot），后段是 chroot 内的路径（node）。 */
-        private const val PATH_IN_ROOT =
+        /**
+         * 前段是宿主的 Android 路径（su、chroot），后段是 chroot 内的路径（node）。
+         *
+         * `internal` 而不是 `private`：清单探针起的那次 dsh 与真启动必须是同一个 PATH ——
+         * 两套 PATH 会让"探针能跑、对话跑不起来"变成一条只在这种组合下出现的怪毛病。
+         */
+        internal const val PATH_IN_ROOT =
             "/system/bin:/system/xbin:/product/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         private const val ENV_API_KEY = "DEEPSEEK_API_KEY"
         private const val TMP_IN_ROOT = "/tmp"
@@ -396,7 +407,14 @@ internal data class DshRuntimeConfig(
             )
         }
 
-        private fun shellQuote(value: String): String =
+        /**
+         * 单引号包裹的 shell 字面量。
+         *
+         * `internal` 而不是 `private`：名单探针往 `su -c` 里拼脚本路径与 runtime root 时要用
+         * **同一个**转义实现。转义规则抄第二份，就总有一天只改一处 —— 而错的那份会把一个含
+         * 单引号的路径拼成两条命令。
+         */
+        internal fun shellQuote(value: String): String =
             "'" + value.replace("'", "'\\''") + "'"
     }
 }

@@ -315,6 +315,13 @@ jobs:
           echo "用单测导出的 overlay：$overlay"
           DSH_E2E_OVERLAY="$overlay" bash scripts/test-dsh-e2e.sh
 
+      # 活清单探针：解包随包运行时 → 真 chroot 起一次 dsh，让桥插件把**活的** Loader 条目
+      # （配置状态 / 运行状态）打成一行 JSON。这是「扩展」页面那半唯一的真验证 ——
+      # 本机跑不了（运行时里的原生模块是 arm64），只能在这里的真 arm64 环境里跑。
+      # 注意别和上面那条 `scripts/test-dsh-inventory.sh` 混：那条比对的是**补丁层**的组合结果。
+      - name: dsh 活清单探针（真 chroot）
+        run: sudo bash scripts/test-dsh-live-inventory.sh
+
       - name: 输出失败详情
         if: always()
         run: |

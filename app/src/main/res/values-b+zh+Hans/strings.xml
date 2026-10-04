@@ -1344,4 +1344,23 @@
   <string name="extensions_state_enabled">已启用</string>
   <string name="extensions_state_disabled">已禁用</string>
   <string name="extensions_no_module_name">（没有声明模块名）</string>
+  <string name="extensions_live_loading">正在起一次 dsh 读活清单...</string>
+  <string name="extensions_live_unavailable">活清单没读出来（%1$s），这一页退回补丁层视图。</string>
+  <string name="extensions_live_note">运行状态来自一次临时启动的 dsh。那次启动为了腾出 stdio 关掉了 ACP 桥（acp），所以它在这份清单里显示为已禁用 —— 真实对话时它是启用的。</string>
+  <string name="extensions_group_live">插件（活清单）</string>
+  <string name="extensions_live_summary">%1$s · %2$s</string>
+  <string name="extensions_run_phase_none">未挂载</string>
+  <string name="extensions_run_phase_pending">等待中</string>
+  <string name="extensions_run_phase_loading">加载中</string>
+  <string name="extensions_run_phase_active">运行中</string>
+  <string name="extensions_run_phase_failed">失败</string>
+  <string name="extensions_run_phase_unloading">卸载中</string>
+  <string name="extensions_detail_entry_id">Loader 条目 id</string>
+  <string name="extensions_detail_runtime_state">运行状态</string>
+  <string name="extensions_live_no_patch_row">profile 补丁层里没有对应行，这里改不了它（终端里仍然可以）。</string>
+  <string name="extensions_group_presets">预设</string>
+  <string name="extensions_preset_rows">%1$d 行</string>
+  <string name="extensions_preset_default">默认</string>
+  <string name="extensions_preset_conditional">由表达式决定</string>
+  <string name="extensions_preset_condition">条件</string>
 </resources>
