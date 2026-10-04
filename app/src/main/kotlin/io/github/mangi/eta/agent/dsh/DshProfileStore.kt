@@ -60,9 +60,9 @@ internal class DshProfileStore(internal val profileDir: File) {
         return when (val edit = document.withDisabled(patchId, moduleName, disabled = !enabled)) {
             DshPatchEdit.Unchanged -> DshProfileWrite.Ok(changed = false)
             is DshPatchEdit.Rejected -> DshProfileWrite.Rejected(edit.reason)
-            is DshPatchEdit.Changed ->
-                if (writePatch(edit.text)) DshProfileWrite.Ok(changed = true)
-                else DshProfileWrite.Rejected("写不进去：${patchFile.absolutePath}")
+            is DshPatchEdit.Changed -> writePatch(edit.text)
+                ?.let { DshProfileWrite.Rejected(it) }
+                ?: DshProfileWrite.Ok(changed = true)
         }
     }
 
@@ -101,15 +101,16 @@ internal class DshProfileStore(internal val profileDir: File) {
         profile.put("bundles", JSONArray(next))
         // 与官方 saveManifest 的字节形态一致：两空格缩进 + 末尾换行。
         val rendered = json.toString(2) + "\n"
-        return if (writeAtomically(manifestFile, rendered)) DshProfileWrite.Ok(changed = true)
-        else DshProfileWrite.Rejected("写不进去：${manifestFile.absolutePath}")
+        return writeAtomically(manifestFile, rendered)
+            ?.let { DshProfileWrite.Rejected(it) }
+            ?: DshProfileWrite.Ok(changed = true)
     }
 
     /** 补丁层文本；文件不在就按官方的 `"[]\n"` 处理（等价于"没有覆盖"）。 */
     private fun readPatchText(): String =
         runCatching { patchFile.readText() }.getOrNull() ?: DshPatchDocument.EMPTY
 
-    private fun writePatch(text: String): Boolean = writeAtomically(patchFile, text)
+    private fun writePatch(text: String): String? = writeAtomically(patchFile, text)
 
     /**
      * 原子替换：先在**同一个目录**里写临时文件，再 rename 覆盖。
@@ -118,22 +119,31 @@ internal class DshProfileStore(internal val profileDir: File) {
      * "initialize 失败 / protocol-eof" 那一类起不来。同目录 rename 是原子的，读到的要么是旧内容、
      * 要么是新内容，没有中间态。官方落的也是 `writeFileAtomic`（连同它那个 `mode: 0o600`，
      * 见 [ownerOnly]）。
+     *
+     * @return null 表示写成了；否则是**给界面显示**的失败原因，带上真实的异常（例如
+     * `FileNotFoundException：… Permission denied`）—— 只回一句"写不进去"的话，真机上的
+     * "profile 目录 owner 是 root" 这类原因就永远看不见。
      */
-    private fun writeAtomically(target: File, text: String): Boolean = runCatching {
-        profileDir.mkdirs()
-        val temp = File.createTempFile(".${target.name}.", ".tmp", profileDir)
-        try {
-            temp.writeText(text)
-            ownerOnly(temp)
-            if (!temp.renameTo(target)) {
-                // 有些平台不允许 rename 覆盖已存在的文件：退一步先删再 rename，仍不行就直接写。
-                target.delete()
-                if (!temp.renameTo(target)) target.writeText(text)
+    private fun writeAtomically(target: File, text: String): String? {
+        val failure = runCatching {
+            profileDir.mkdirs()
+            val temp = File.createTempFile(".${target.name}.", ".tmp", profileDir)
+            try {
+                temp.writeText(text)
+                ownerOnly(temp)
+                if (!temp.renameTo(target)) {
+                    // 有些平台不允许 rename 覆盖已存在的文件：退一步先删再 rename，仍不行就直接写。
+                    target.delete()
+                    if (!temp.renameTo(target)) target.writeText(text)
+                }
+            } finally {
+                if (temp.exists()) temp.delete()
             }
-        } finally {
-            if (temp.exists()) temp.delete()
         }
-    }.isSuccess
+        val error = failure.exceptionOrNull() ?: return null
+        val cause = error::class.java.simpleName + (error.message?.let { "：$it" } ?: "")
+        return "写不进去：${target.absolutePath}（$cause）"
+    }
 
     /**
      * 落成"只有属主可读写"（0600），与官方的 `writeFileAtomic(..., mode 0o600)` 对齐。

@@ -1305,4 +1305,23 @@
   <string name="speech_credentials_lost">語音憑據無法解密，請重新填寫並儲存</string>
   <string name="speech_save_retry">請重試</string>
   <string name="system_notice_model_retry">模型請求重試</string>
+  <string name="extensions_title">擴充</string>
+  <string name="extensions_settings_summary">外掛包與外掛開關</string>
+  <string name="extensions_note_hmr">改動下次對話生效：dsh 的熱重載（hmr）在 profile 裡是關的。</string>
+  <string name="extensions_refresh">重新整理</string>
+  <string name="extensions_loading">正在讀取擴充清單...</string>
+  <string name="extensions_runtime_missing">對話執行階段還沒裝好</string>
+  <string name="extensions_runtime_missing_summary">請先去設定裡重裝對話執行階段，再回到這個頁面。</string>
+  <string name="extensions_load_failed">讀不到擴充清單：%1$s</string>
+  <string name="extensions_unreadable">清單沒讀出來，原因見上方。</string>
+  <string name="extensions_empty_title">沒有讀到外掛行</string>
+  <string name="extensions_empty_summary">執行階段的 profile 裡還沒有補丁層。</string>
+  <string name="extensions_group_bundles">外掛包</string>
+  <string name="extensions_group_problems">補丁層的問題</string>
+  <string name="extensions_bundle_rows">%1$d 行外掛</string>
+  <string name="extensions_row_unresolved">由表達式 / 無法判斷決定</string>
+  <string name="extensions_row_mentioned_by">被 %1$s 覆蓋過</string>
+  <string name="extensions_message_saved">已寫入，清單已重新讀取。</string>
+  <string name="extensions_message_unchanged">本來就是這狀態，沒有改動檔案。</string>
+  <string name="extensions_write_failed">寫入失敗：%1$s</string>
 </resources>

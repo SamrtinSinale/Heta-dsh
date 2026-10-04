@@ -172,6 +172,12 @@ private class Item(val dashLine: Int, val dashIndent: Int) {
     var disabledLine: Int? = null
     var disabled: DisabledKey = DisabledKey.Absent
     var hasInsert: Boolean = false
+
+    /** 这条最后一个"值在下一层"的键（`insert:` / `config:` …）：用来判断嵌套序列归谁。 */
+    var blockKey: String? = null
+
+    /** 自己是不是 `insert:` 里的子行 —— 只有这种嵌套条目才算插件行（官方 `flatten` 的口径）。 */
+    var groupChild: Boolean = false
 }
 
 private sealed interface DisabledKey {
@@ -233,6 +239,12 @@ private fun scan(text: String): Patch {
                 open.removeAt(open.size - 1)
             }
             val item = Item(dashLine = index, dashIndent = indent)
+            // 是不是某个条目 `insert:` 列表里的子行 —— 官方 `flatten` 只对 insert 分组递归
+            // （`row.group && Array.isArray(row.config)`），`config:` 里面的序列条目**不是**插件行。
+            // 真机上踩过：模型目录（`- id: llm-deepseek / config: / models: / - id: "DeepSeek-V4-Pro"`）
+            // 里的模型条目被我当成了插件行，界面上多出几行"定位不到是哪个插件"。
+            val enclosing = open.lastOrNull()
+            item.groupChild = enclosing != null && enclosing.blockKey == "insert" && indent > enclosing.dashIndent
             val rest = body.substring(1)
             if (rest.isNotBlank()) {
                 val content = rest.trimStart(' ')
@@ -282,6 +294,8 @@ private fun scan(text: String): Patch {
         val id = item.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         // 带 insert 的条目是**分组**，它的 id 不是插件（官方开关时也排除这类）。
         if (item.hasInsert) return@mapNotNull null
+        // 顶层条目，或 `insert:` 列表里的子行；`config:` 里更深的东西（模型目录之类）不是插件行。
+        if (!item.groupChild && item.dashIndent != rootIndent) return@mapNotNull null
         DshPatchRow(
             patchId = id,
             moduleName = item.name,
@@ -306,6 +320,8 @@ private fun readKey(item: Item, content: String, line: Int) {
     val key = content.substring(0, colon).trim()
     if (!PLAIN_SCALAR.matches(key)) return
     val value = content.substring(colon + 1)
+    // 值在下一层的键（`insert:`、`config:` …）记下来：判断"嵌在它下面的序列算不算插件行"要用。
+    item.blockKey = key.takeIf { value.isBlank() }
     when (key) {
         "id" -> item.id = stringValue(value)
         "name" -> item.name = stringValue(value)

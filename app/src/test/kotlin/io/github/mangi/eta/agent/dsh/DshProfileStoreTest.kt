@@ -193,6 +193,24 @@ class DshProfileStoreTest {
     }
 
     @Test
+    fun aReadOnlyProfileDirectoryIsReportedWithTheRealCause() {
+        // 真机上就是这样：`profiles/acp/` 是 dsh（root）建的，App 连在里面建临时文件都被拒。
+        // root 绕过权限位，所以这条只在非 root 下有意义（CI 的 runner 是普通用户）。
+        assumeTrue("以 root 跑时权限位不起作用", System.getProperty("user.name") != "root")
+        val store = profile()
+        val patchFileName = "cordis.patch.yml"
+        assertTrue("测试前提：能去掉目录的写权限", store.profileDir.setWritable(false, false))
+        try {
+            val result = store.setPluginEnabled("some-plugin", null, enabled = false)
+            assertTrue("目录不可写时必须拒绝，不能假装写成功", result is DshProfileWrite.Rejected)
+            val reason = (result as DshProfileWrite.Rejected).reason
+            assertTrue("原因要带出真实错因，否则真机上查不出是权限：$reason", reason.contains(patchFileName))
+        } finally {
+            store.profileDir.setWritable(true, true)
+        }
+    }
+
+    @Test
     fun writeLeavesNoTemporaryFileBehind() {
         val store = profile()
         assertTrue(store.setPluginEnabled("x", null, enabled = false) is DshProfileWrite.Ok)

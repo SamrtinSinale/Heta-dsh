@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.Hearing
@@ -332,6 +333,19 @@ private fun SettingsPageContent(
                             )
                         },
                         onClick = { onNavigate(AppRoute.Characters) },
+                    )
+
+                    EtaPreferenceDivider()
+                    EtaArrowPreference(
+                        title = stringResource(R.string.extensions_title),
+                        summary = stringResource(R.string.extensions_settings_summary),
+                        startAction = {
+                            EtaPreferenceIcon(
+                                icon = Icons.Rounded.Extension,
+                                tint = EtaPreferenceColors.Blue,
+                            )
+                        },
+                        onClick = { onNavigate(AppRoute.DshExtensions) },
                     )
                 }
             }

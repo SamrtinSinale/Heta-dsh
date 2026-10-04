@@ -1339,4 +1339,23 @@
   <string name="speech_test_result">Recognition result: %1$s</string>
   <string name="speech_credentials_lost">Speech credentials could not be decrypted; enter and save them again</string>
   <string name="speech_save_retry">try again</string>
+  <string name="extensions_title">Extensions</string>
+  <string name="extensions_settings_summary">Bundles and plugin switches</string>
+  <string name="extensions_note_hmr">Changes take effect in the next conversation: dsh hot reload (hmr) is disabled in the profile.</string>
+  <string name="extensions_refresh">Refresh</string>
+  <string name="extensions_loading">Reading the extension inventory...</string>
+  <string name="extensions_runtime_missing">The chat runtime is not installed yet</string>
+  <string name="extensions_runtime_missing_summary">Reinstall it from Settings first, then come back to this page.</string>
+  <string name="extensions_load_failed">Could not read the extension inventory: %1$s</string>
+  <string name="extensions_unreadable">The inventory could not be read; the reason is shown above.</string>
+  <string name="extensions_empty_title">No plugin rows</string>
+  <string name="extensions_empty_summary">The runtime profile has no patch layers yet.</string>
+  <string name="extensions_group_bundles">Bundles</string>
+  <string name="extensions_group_problems">Layer problems</string>
+  <string name="extensions_bundle_rows">%1$d plugin rows</string>
+  <string name="extensions_row_unresolved">Decided by an expression / cannot be determined</string>
+  <string name="extensions_row_mentioned_by">also patched by %1$s</string>
+  <string name="extensions_message_saved">Written; the inventory was read again.</string>
+  <string name="extensions_message_unchanged">Already in that state; nothing was written.</string>
+  <string name="extensions_write_failed">Write failed: %1$s</string>
 </resources>

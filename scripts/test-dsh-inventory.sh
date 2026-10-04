@@ -64,13 +64,22 @@ cat > "$PROFILE_DIR/cordis.patch.yml" <<'YAML'
   disabled: false
 YAML
 # home 层（在 profile 之后生效）：重新关掉 tool-ralph；再对 plugin-manager 只提 config
-# （它只该算"提到过"，不能把上一层的 disabled 当成"启用"）。
+# （它只该算"提到过"，不能把上一层的 disabled 当成"启用"）；最后塞一份**模型目录形状**的嵌套
+# 序列 —— 真机上就是它把 `config.models` 里的模型条目暴露成了插件行（见 DshPatchDocument 的注释）。
 cat > "$WORK/root/.dsh/cordis.patch.yml" <<'YAML'
 - id: tool-ralph
   disabled: true
 - id: plugin-manager
   config:
     probe: 1
+- id: llm-deepseek
+  config:
+    models:
+      - id: "DeepSeek-V4-Pro"
+        contextWindow: 1000000
+      - id: "cn:deepseek-v4.1-flash"
+        contextWindow: 1000000
+        inputModalities: [text, image]
 YAML
 # Heta 覆盖层（最后生效，等于 App 每次运行时传的 --patch）：打开 session-title-llm。
 OVERLAY="$WORK/opt/dsh/heta-run-overlay.patch.yml"

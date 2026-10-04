@@ -73,6 +73,7 @@ internal class DshPluginInventory(
                         } else {
                             "这个包没有声明 dsh.bundle.patch —— 它不是 bundle"
                         },
+                        readOnlyReason = null,
                     )
                 }
                 continue
@@ -86,6 +87,12 @@ internal class DshPluginInventory(
                 isBundle = true,
                 rowCount = read.rows.size,
                 problem = read.problem,
+                // 官方的口径：这一层的行里只要碰到管理模块，这一层就是"管理必需"，不许关。
+                readOnlyReason = if (read.rows.any { it.moduleName in PROTECTED_MODULES }) {
+                    "它里面有 dsh 的管理/入口模块，关掉运行时自己就起不来"
+                } else {
+                    null
+                },
             )
         }
 
@@ -160,6 +167,12 @@ internal class DshPluginInventory(
                 state = it.state,
                 source = it.source,
                 mentionedBy = it.mentionedBy.toList(),
+                // 用**合并后**的模块名判定：覆盖行常常不写 name，声明层那个才是真正在跑的模块。
+                readOnlyReason = when {
+                    it.moduleName in PROTECTED_MODULES -> "dsh 的管理/入口模块，关掉运行时自己就起不来"
+                    it.moduleName == null -> "这一行没有模块名，定位不到它是哪个插件"
+                    else -> null
+                },
             )
         }
     }
@@ -245,6 +258,8 @@ internal data class DshInventoryBundle(
     val rowCount: Int,
     /** 读不出来 / 不是 bundle 的原因。 */
     val problem: String?,
+    /** 不许在界面上关掉的原因（null = 可以关）。见 [PROTECTED_MODULES]。 */
+    val readOnlyReason: String?,
 )
 
 /** 合并后的一行插件。 */
@@ -261,4 +276,38 @@ internal data class DshInventoryRow(
      * 官方的 dump 标注是 "patched by …"，口径比这个严；这里宁可说宽一点，也不假装知道 config 变没变。
      */
     val mentionedBy: List<String>,
+    /** 不许在界面上关掉的原因（null = 可以关）。见 [PROTECTED_MODULES]。 */
+    val readOnlyReason: String?,
+)
+
+/**
+ * 不许在界面上关掉的模块。
+ *
+ * 前 16 个**逐字抄自官方 `protectedModules`**（`dsh-plugin-manager/lib/index.js` 第 1077 行起），
+ * 官方的 `listPlugins` 用它们把这类行标成 `management-required`。官方保护的是**可恢复性**：
+ * 这些是"把别的插件关坏了之后，还能把运行时改回来"所依赖的管理模块。
+ *
+ * 后两个是 Heta 自己加的：`dsh-acp-app` / `dsh-acp` 是 Heta 跟 dsh 说话的唯一入口 —— 关掉它，
+ * 下一次对话就是 `initialize` 失败 / protocol-eof（这个 App 自己还能改回来，但会先炸一次，
+ * 而"炸一次"正是我们要防的）。
+ */
+private val PROTECTED_MODULES = setOf(
+    "@deepseek-ai/dsh-plugin-manager",
+    "@deepseek-ai/cordis-plugin-loader",
+    "@deepseek-ai/cordis-plugin-include",
+    "@deepseek-ai/dsh-api-gateway",
+    "@deepseek-ai/dsh-host-webserver",
+    "@deepseek-ai/dsh-client-modules",
+    "@deepseek-ai/dsh-client-ui-settings-plugin-inventory",
+    "@deepseek-ai/dsh-client-ui-plugin-manager",
+    "@deepseek-ai/dsh-host-plugin-inventory",
+    "@deepseek-ai/dsh-typert-registry",
+    "@deepseek-ai/dsh-api-remotes",
+    "@deepseek-ai/cordis-plugin-timer",
+    "@deepseek-ai/dsh-client-connection",
+    "@deepseek-ai/dsh-host-frontend-static",
+    "@deepseek-ai/dsh-tools",
+    "@deepseek-ai/dsh-hmr",
+    "@deepseek-ai/dsh-acp-app",
+    "@deepseek-ai/dsh-acp",
 )

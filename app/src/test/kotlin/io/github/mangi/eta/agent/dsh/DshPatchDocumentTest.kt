@@ -219,6 +219,46 @@ class DshPatchDocumentTest {
     }
 
     @Test
+    fun nestedEntriesInsideAConfigAreNotPluginRows() {
+        // 真机上的形状（`DshRuntimeConfig.modelCatalogOverlay` 写出来的就是这份）：
+        //   - id: llm-deepseek
+        //       config:
+        //         models:
+        //           - id: "DeepSeek-V4-Pro"
+        // 官方 `flatten` 只对 insert 分组递归（`row.group && Array.isArray(row.config)`），所以
+        // `config:` 里的模型条目**不是**插件行。第一版把它们当成了行，真机界面上就多出几行
+        // "这一行没有模块名，定位不到它是哪个插件"。
+        val text = """
+            - id: llm-deepseek
+              config:
+                models:
+                  - id: "DeepSeek-V4-Pro"
+                    contextWindow: 1000000
+                  - id: "cn:deepseek-v4.1-flash"
+                    contextWindow: 1000000
+                    inputModalities: [text, image]
+            - id: acp
+              config:
+                model: "cn:deepseek-v4.1-flash"
+        """.trimIndent() + "\n"
+
+        val document = DshPatchDocument.parse(text)
+        assertNull(document.rejection)
+        assertEquals(listOf("llm-deepseek", "acp"), document.rows.map { it.patchId })
+    }
+
+    @Test
+    fun insertChildrenAreStillRows() {
+        // 反面对照：insert 里的子行**是**插件行（上面那条不能把这条也挡掉）。
+        val text = "- id: group\n  insert:\n    - id: inner\n      name: '@deepseek-ai/dsh-inner'\n" +
+            "    - id: deeper\n      insert:\n        - id: innermost\n"
+        assertEquals(
+            listOf("inner", "innermost"),
+            DshPatchDocument.parse(text).rows.map { it.patchId },
+        )
+    }
+
+    @Test
     fun toleratesALeadingByteOrderMark() {
         // 记事本改过的文件会带 UTF-8 BOM，js-yaml 认它，所以我们也得认 —— 不然会"看不懂"一份
         // dsh 明明能读的文件。（改过之后 BOM 不再写回去，这是有意的：它没有语义。）

@@ -332,6 +332,7 @@ private fun titleForRoute(route: AppRoute?): String = when (route) {
     is AppRoute.AppearanceSettings -> stringResource(R.string.appearance_title)
     is AppRoute.DataBackup -> stringResource(R.string.data_backup_title)
     is AppRoute.Memory -> stringResource(R.string.route_memory)
+    is AppRoute.DshExtensions -> stringResource(R.string.extensions_title)
     is AppRoute.LinuxEnvironment -> stringResource(R.string.route_linux_environment)
     is AppRoute.Workspace -> stringResource(R.string.capability_workspace)
     is AppRoute.SharedFolders -> stringResource(R.string.route_shared_folders)

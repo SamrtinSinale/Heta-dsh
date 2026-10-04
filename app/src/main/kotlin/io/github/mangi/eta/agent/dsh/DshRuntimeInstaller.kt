@@ -57,6 +57,64 @@ internal object DshRuntimeInstaller {
 
     fun runtimeDirectory(context: Context): File = File(context.filesDir, ROOT_DIR_NAME)
 
+    /**
+     * 把 profile 目录**交还给 App 自己**（chown 到本进程的 uid）。
+     *
+     * 为什么需要：dsh 是经 su 以 root 跑的，它创建的 `profiles/<name>/` 整个目录（连同
+     * `package.json`、`cordis.patch.yml`）owner 是 root、权限 0755 —— App 进程**读得到**，
+     * 但连在该目录里建一个临时文件都会被拒（EACCES），于是「扩展」页面一改就是
+     * "写不进去：…（Permission denied）"。
+     *
+     * 为什么不干脆以 root 身份去写那两个文件：那要把用户内容经 shell 传一遍（转义与注入面），
+     * 而这里只需要在 root 侧改一次 owner —— 之后 App 侧就是普通的原子写（临时文件 + rename）。
+     * dsh 之后以 root 覆盖写也不受影响（root 不受权限位约束）；只有它自己走 `writeFileAtomic`
+     * 换 inode 时 owner 才会变回 root，下次调用本函数再修一次即可（调用方把它当幂等操作）。
+     *
+     * 只动这三样：目录本身（App 要在里面建临时文件）＋它要写的两个文件。`node_modules` 之类
+     * 一律不碰 —— 递归 chown 一个装了几百个包的 profile 目录既慢又没必要。
+     *
+     * @return 现在到底能不能写：以**磁盘事实**为准，不看脚本退出码（su 被拒、超时都落到 false）。
+     */
+    fun handProfileToApp(profileDir: File): Boolean {
+        if (!profileDir.isDirectory) return false
+        if (profileWritable(profileDir)) return true
+
+        val path = profileDir.absolutePath
+        if (path.contains('\'') || path.contains('\n')) {
+            Log.w(TAG, "profile 路径含引号或换行，不拼进脚本：$path")
+            return profileWritable(profileDir)
+        }
+        val uid = android.os.Process.myUid()
+        val targets = "'$path' '$path/package.json' '$path/cordis.patch.yml'"
+        val script = "chown $uid $targets 2>/dev/null; chmod u+rw $targets 2>/dev/null; true"
+
+        val log = runCatching { File.createTempFile("dsh-chown-", ".log") }.getOrNull()
+            ?: return profileWritable(profileDir)
+        try {
+            val started = ProcessBuilder("su", "-c", script)
+                .redirectErrorStream(true)
+                .redirectOutput(log)
+                .start()
+            if (!started.waitFor(PURGE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                started.destroyForcibly()
+                Log.w(TAG, "交还 profile owner 超时（${PURGE_TIMEOUT_MS}ms）：su 可能卡在授权")
+            } else if (started.exitValue() != 0) {
+                val output = runCatching { log.readText() }.getOrDefault("").take(200)
+                Log.w(TAG, "交还 profile owner 退出码 ${started.exitValue()}：$output")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "交还 profile owner 失败", error)
+        } finally {
+            runCatching { log.delete() }
+        }
+        return profileWritable(profileDir)
+    }
+
+    /** App 能不能在 profile 目录里建临时文件并覆盖补丁文件。 */
+    private fun profileWritable(profileDir: File): Boolean =
+        profileDir.canWrite() &&
+            File(profileDir, "cordis.patch.yml").let { !it.exists() || it.canWrite() }
+
     fun isReady(context: Context): Boolean {
         val root = runtimeDirectory(context)
         val marker = File(root, READY_MARKER)

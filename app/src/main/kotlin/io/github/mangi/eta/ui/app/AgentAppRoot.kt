@@ -73,6 +73,7 @@ import io.github.mangi.eta.ui.screens.characters.CharacterEditorScreen
 import io.github.mangi.eta.ui.screens.characters.CharacterPersonaScreen
 import io.github.mangi.eta.ui.screens.characters.CharacterMemoryScreen
 import io.github.mangi.eta.ui.screens.enhance.SystemEnhanceScreen
+import io.github.mangi.eta.ui.screens.extensions.DshExtensionsScreen
 import io.github.mangi.eta.ui.screens.home.AgentHomeScreen
 import io.github.mangi.eta.ui.screens.mcp.McpServerDetailScreen
 import io.github.mangi.eta.ui.screens.mcp.McpServersScreen
@@ -602,6 +603,12 @@ fun AgentAppRoot(
                             AgentMemoryAction.DismissNotice -> agentState.dismissMemoryNotice()
                         }
                     },
+                )
+            }
+            entry<AppRoute.DshExtensions>(swipeDismiss = swipeDismiss) {
+                DshExtensionsScreen(
+                    context = context,
+                    onBack = ::popRoute,
                 )
             }
             entry<AppRoute.LinuxEnvironment>(swipeDismiss = swipeDismiss) {

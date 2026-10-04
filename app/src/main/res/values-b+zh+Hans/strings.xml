@@ -1317,4 +1317,23 @@
   <string name="speech_credentials_lost">语音凭据无法解密，请重新填写并保存</string>
   <string name="speech_save_retry">请重试</string>
   <string name="system_notice_model_retry">模型请求重试</string>
+  <string name="extensions_title">扩展</string>
+  <string name="extensions_settings_summary">插件包与插件开关</string>
+  <string name="extensions_note_hmr">改动下次对话生效：dsh 的热重载（hmr）在 profile 里是关的。</string>
+  <string name="extensions_refresh">刷新</string>
+  <string name="extensions_loading">正在读取扩展清单...</string>
+  <string name="extensions_runtime_missing">对话运行时还没装好</string>
+  <string name="extensions_runtime_missing_summary">请先去设置里重装对话运行时，再回到这个页面。</string>
+  <string name="extensions_load_failed">读不到扩展清单：%1$s</string>
+  <string name="extensions_unreadable">清单没读出来，原因见上方。</string>
+  <string name="extensions_empty_title">没有读到插件行</string>
+  <string name="extensions_empty_summary">运行时的 profile 里还没有补丁层。</string>
+  <string name="extensions_group_bundles">插件包</string>
+  <string name="extensions_group_problems">补丁层的问题</string>
+  <string name="extensions_bundle_rows">%1$d 行插件</string>
+  <string name="extensions_row_unresolved">由表达式 / 无法判断决定</string>
+  <string name="extensions_row_mentioned_by">被 %1$s 覆盖过</string>
+  <string name="extensions_message_saved">已写入，清单已重新读取。</string>
+  <string name="extensions_message_unchanged">本来就是这状态，没有改动文件。</string>
+  <string name="extensions_write_failed">写入失败：%1$s</string>
 </resources>

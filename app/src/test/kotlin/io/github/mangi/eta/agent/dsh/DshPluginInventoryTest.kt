@@ -54,6 +54,15 @@ class DshPluginInventoryTest {
             expected.map { Triple(it.patchId, it.moduleName, it.state) },
             actual.map { Triple(it.patchId, it.moduleName, it.state) },
         )
+
+        // 上面那条**共用我的解析器**：解析规则本身错了，两边会一起错、照样绿。
+        // 所以再加一条独立对照：dsh 的 dump 把每一行都渲染在**顶层**（缩进 0），于是
+        // "我认定的行"必须和"dump 里缩进 0 的那些 `- id:`"完全一致 —— 这条不看解析器，
+        // 能照出"把更深的东西当成行"这类错（真机上模型目录那次就是这么漏过去的）。
+        val topLevelIds = File(dumpPath).readLines()
+            .filter { it.startsWith("- id: ") }
+            .map { it.removePrefix("- id: ").trim().trim('\'', '"') }
+        assertEquals("行必须与 dump 顶层那些 `- id:` 一一对应", topLevelIds, actual.map { it.patchId })
     }
 
     @Test
@@ -174,6 +183,54 @@ class DshPluginInventoryTest {
         assertFalse(listed.selected)
         assertTrue("没选中的也要能被看见、并说明它确实是个 bundle", listed.isBundle)
         assertEquals(3, listed.rowCount)
+    }
+
+    @Test
+    fun managementModulesAndTheAcpEntryAreNotToggleable() {
+        // 官方 protectedModules 那 16 个 + Heta 自己加的两个入口：关掉它们，运行时自己就起不来。
+        // 这里自己造几个真的会出现在运行时的模块名，别依赖别的用例的夹具。
+        runtime(bundles = listOf(BASE, ACP_APP))
+        installBundle(
+            BASE,
+            "- insert:\n" +
+                "    - id: plugin-manager\n      name: '@deepseek-ai/dsh-plugin-manager'\n" +
+                "    - id: timer\n      name: '@deepseek-ai/cordis-plugin-timer'\n" +
+                "    - id: hmr\n      name: '@deepseek-ai/dsh-hmr'\n" +
+                "    - id: ordinary\n      name: '@deepseek-ai/dsh-session-title'\n",
+        )
+        installBundle(ACP_APP, "- id: acp\n  name: '@deepseek-ai/dsh-acp'\n")
+
+        val rows = DshPluginInventory(root).read().rows.associateBy { it.patchId }
+
+        for (id in listOf("plugin-manager", "timer", "hmr", "acp")) {
+            assertTrue("$id 不该能关：${rows.getValue(id).readOnlyReason}", rows.getValue(id).readOnlyReason != null)
+        }
+        assertNull("普通插件行要能关", rows.getValue("ordinary").readOnlyReason)
+    }
+
+    @Test
+    fun bundlesCarryingProtectedRowsAreNotToggleable() {
+        runtime(bundles = listOf(BASE, ACP_APP, REVIEW))
+        installBundle(BASE, BASE_PATCH)
+        installBundle(ACP_APP, ACP_APP_PATCH)
+        installBundle(REVIEW, "- id: review-row\n  name: '@deepseek-ai/dsh-review-row'\n")
+
+        val bundles = DshPluginInventory(root).read().bundles.associateBy { it.name }
+
+        assertTrue("dsh-base 里有 plugin-manager", bundles.getValue(BASE).readOnlyReason != null)
+        assertTrue("dsh-acp-app 是对话入口", bundles.getValue(ACP_APP).readOnlyReason != null)
+        assertNull("只有普通行的可选 bundle 要能关", bundles.getValue(REVIEW).readOnlyReason)
+    }
+
+    @Test
+    fun aRowWithoutAModuleNameIsNotToggleable() {
+        // 只在用户补丁层里出现、又没写 name 的行：定位不到它是哪个插件，界面不该让人去点。
+        runtime(profilePatch = template("- id: nameless\n  disabled: true\n"))
+        installBundle(BASE, "- id: other\n  name: '@deepseek-ai/dsh-other'\n")
+
+        val nameless = DshPluginInventory(root).read().rows.single { it.patchId == "nameless" }
+        assertNull(nameless.moduleName)
+        assertTrue(nameless.readOnlyReason != null)
     }
 
     @Test
