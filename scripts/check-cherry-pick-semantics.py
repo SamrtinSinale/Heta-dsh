@@ -35,7 +35,17 @@ KOTLIN_ROOT = re.compile(r"^app/src/[^/]+/kotlin/")
 
 
 def code_lines(text: str) -> list[str]:
-    return [l for l in text.splitlines() if not l.strip().startswith(("//", "*", "/*"))]
+    """去注释**与 import 行**之后的代码。
+
+    import 行必须排除：`import androidx.compose.ui.semantics.Role` 里那个 `.semantics.`
+    会被 [used_as_call_or_member] 的点号判据当成「还在用」。而 git 把一次重命名（旧文件删、
+    新文件加）记到新文件头上时，旧文件删掉的 `semantics` 就会与这一行撞上 —— 2026-10-05
+    本地闸门 case ⑤ 报的就是这个假阳性（`DshPresetChooser.kt` 那条）。
+    """
+    return [
+        l for l in text.splitlines()
+        if not l.strip().startswith(("//", "*", "/*", "import "))
+    ]
 
 
 def read_version(tip: str, path: str, fallback: Path) -> str:

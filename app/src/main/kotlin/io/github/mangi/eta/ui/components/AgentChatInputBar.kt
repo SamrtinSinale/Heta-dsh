@@ -18,6 +18,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,11 +30,13 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -161,7 +165,10 @@ internal fun AgentChatInputBar(
         pendingFileReferences.isNotEmpty()
     val presetButtonLabel = stringResource(R.string.chat_preset_button)
     // 预设弹层与说明弹层：都在这一层，因为入口就在输入框上（加号右边）。
+    // `presetDraft` 是**暂存**的选中项：点一行只挪选中态，点确认才真的切（真机反馈：
+    // "确认按钮是个空壳……我要的就是要点击确认的逻辑而不是点击了哪一个直接选了"）。
     var presetPickerOpen by remember { mutableStateOf(false) }
+    var presetDraft by remember { mutableStateOf(presetId) }
     var guidePresetId by remember { mutableStateOf<String?>(null) }
     // 命令菜单只由输入驱动：在输入框里敲 `/…`（还没有空格）时自动弹出 —— 真机反馈
     // "没必要专门放一个 / 按钮"。insertedCommand 记住刚插进去的那一条，免得插完立刻又弹。
@@ -365,14 +372,36 @@ internal fun AgentChatInputBar(
 
                             // 预设入口：加号右边。斜杠命令那条路只留"在输入框里敲 `/` 自动弹"，
                             // 所以这个位置让给预设（真机反馈：没必要专门放一个 / 按钮）。
-                            // 用 IconButton 是为了圆形水波纹 —— 手搓 clickable 的灰色块是矩形。
-                            IconButton(
-                                onClick = { presetPickerOpen = true },
-                                minWidth = ChatInputActionSize,
-                                minHeight = ChatInputActionSize,
-                                modifier = Modifier.semantics {
-                                    contentDescription = presetButtonLabel
-                                },
+                            //
+                            // 点击灰块必须是**圆**的：miuix 的 IconButton 是圆角矩形，`clip(CircleShape)`
+                            // 也仍然被真机反馈成矩形（库的 indication 不受这层裁剪约束）。所以这里
+                            // 干脆不用库的 indication（`indication = null`），按下态自己画：
+                            // 一个圆形背景，颜色深浅由按下状态驱动。
+                            val presetInteraction = remember { MutableInteractionSource() }
+                            val presetPressed by presetInteraction.collectIsPressedAsState()
+                            Box(
+                                modifier = Modifier
+                                    .size(ChatInputActionSize)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (presetPressed) {
+                                            MiuixTheme.colorScheme.onSurface.copy(alpha = 0.10f)
+                                        } else {
+                                            Color.Transparent
+                                        },
+                                        CircleShape,
+                                    )
+                                    .clickable(
+                                        interactionSource = presetInteraction,
+                                        indication = null,
+                                    ) {
+                                        presetDraft = presetId
+                                        presetPickerOpen = true
+                                    }
+                                    .semantics {
+                                        contentDescription = presetButtonLabel
+                                    },
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Tune,
@@ -495,20 +524,32 @@ internal fun AgentChatInputBar(
             cornerRadius = DialogDefaults.CornerRadius,
             title = stringResource(R.string.chat_preset_picker_title),
             summary = stringResource(R.string.chat_preset_picker_summary),
+            // 与说明弹层同宽（真机反馈：两个弹窗该一样宽一样高）。
+            maxWidth = PresetDialogMaxWidth,
             onDismissRequest = { presetPickerOpen = false },
         ) {
             Column {
-                DshPresetChooser(
-                    selectedId = presetId,
-                    onSelected = {
-                        onPresetSelected(it)
-                        presetPickerOpen = false
-                    },
-                    onGuide = { guidePresetId = it },
-                )
+                // 固定高度：与说明弹层一样高，切内容不跳尺寸。
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(PresetDialogContentHeight)
+                        // 固定高度必须配滚动：不然内容一超就被裁掉、还滑不动
+                        //（真机反馈"预设弹窗不能滑动了"）。
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    DshPresetChooser(
+                        selectedId = presetDraft,
+                        onSelected = { presetDraft = it },
+                        onGuide = { guidePresetId = it },
+                    )
+                }
                 EtaTextButton(
                     text = stringResource(R.string.action_confirm),
-                    onClick = { presetPickerOpen = false },
+                    onClick = {
+                        onPresetSelected(presetDraft)
+                        presetPickerOpen = false
+                    },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 )
             }

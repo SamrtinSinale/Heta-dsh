@@ -294,8 +294,7 @@
   <string name="ui_lsposed_service_is_not_connected_44734d">LSPosed 服務未連線</string>
   <string name="ui_linux_tool_environment_314d22">Linux 工具環境</string>
   <string name="settings_dsh_runtime_title">重裝對話執行階段</string>
-  <string name="settings_dsh_runtime_summary">清掉已解包的 dsh 執行階段並重新展開（請在對話閒置時操作）</string>
-  <string name="settings_dsh_runtime_confirm">重裝會清掉 dsh 側自己的會話上下文（App 側歷史保留），請在對話閒置時操作。</string>
+  <string name="settings_dsh_runtime_confirm">重裝會清掉對話內核自己記的上下文（App 裡的聊天記錄保留）。對話內核出問題、或升級完想讓它從乾淨狀態開始時用；請在沒有任務在跑的時候操作。</string>
   <string name="settings_dsh_runtime_busy">正在重新解包執行階段，請稍候</string>
   <string name="settings_dsh_runtime_done">對話執行階段已重裝</string>
   <string name="settings_dsh_runtime_failed">重裝失敗，請查看日誌</string>
@@ -1306,7 +1305,6 @@
   <string name="speech_save_retry">請重試</string>
   <string name="system_notice_model_retry">模型請求重試</string>
   <string name="extensions_title">擴充</string>
-  <string name="extensions_settings_summary">外掛包與外掛開關</string>
   <string name="extensions_note_hmr">改動下次開對話才生效。</string>
   <string name="extensions_note_order">清單順序就是執行階段自己的載入順序。</string>
   <string name="extensions_note_plugins">改動下次開對話才生效；清單順序就是執行階段自己的載入順序。</string>
@@ -1320,6 +1318,7 @@
   <string name="chat_command_goal_none">這個對話還沒設過目標。用 /goal &lt;目標&gt; 設一個。</string>
   <string name="chat_command_goal_current">目前目標：%1$s</string>
   <string name="chat_preset_button">預設模式</string>
+  <string name="chat_preset_guide_close">關閉</string>
   <string name="chat_preset_guide_action">查看說明：%1$s</string>
   <string name="chat_preset_picker_title">預設模式</string>
   <string name="chat_preset_picker_summary">選 Agent 的工具與工作方式。切換後下一則訊息生效。</string>
@@ -1336,7 +1335,7 @@
   <string name="extensions_refreshing">重新整理中…</string>
   <string name="extensions_loading">正在讀取外掛清單…</string>
   <string name="extensions_runtime_missing">對話執行階段還沒裝好</string>
-  <string name="extensions_runtime_missing_summary">請先去設定裡重裝對話執行階段，再回到這個頁面。</string>
+  <string name="extensions_runtime_missing_summary">先到「設定 → 重裝對話執行階段」點一下，裝好再回到這一頁。</string>
   <string name="extensions_load_failed">讀不到外掛清單：%1$s</string>
   <string name="extensions_unreadable">沒能讀出外掛清單，原因見上方。</string>
   <string name="extensions_search_hint">搜尋外掛名或編號</string>

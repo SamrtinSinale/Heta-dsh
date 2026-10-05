@@ -15,7 +15,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +31,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
@@ -44,16 +48,18 @@ import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupItem
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupTitle
-import io.github.mangi.eta.ui.components.EtaRadioButtonPreference
 import io.github.mangi.eta.ui.components.EtaSwitch
 import io.github.mangi.eta.ui.components.EtaSwitchPreference
-import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.MiuixScaffoldPage
 import io.github.mangi.eta.ui.components.StatusError
 import io.github.mangi.eta.ui.components.StatusSuccess
 import io.github.mangi.eta.ui.components.StatusWarning
 import io.github.mangi.eta.ui.components.DshPresetGuideDialog
+import io.github.mangi.eta.ui.components.DshPresetRow
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.Text
@@ -85,17 +91,22 @@ internal fun DshExtensionsScreen(
         actions = {
             // 刷新不只是给界面用的：补丁层是普通文件，终端里的 dsh 或用户自己也会改它。
             // 写或探针已经在飞时别再点：两次探针没意义，写还在飞时重探读到的是写之前的形态。
-            EtaTextButton(
-                text = stringResource(
-                    if (store.working || store.probing) {
-                        R.string.extensions_refreshing
-                    } else {
-                        R.string.extensions_refresh
-                    },
-                ),
-                enabled = !store.working && !store.probing,
+            // 刷新就是个按钮（真机反馈「右上角刷新就应该是个按钮」）：忙碌时原地转圈，
+            // 这样不必再为「正在刷新」单独留一句文字。
+            IconButton(
                 onClick = { store.reload() },
-            )
+                enabled = !store.working && !store.probing,
+            ) {
+                if (store.working || store.probing) {
+                    InfiniteProgressIndicator(size = 20.dp)
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = stringResource(R.string.extensions_refresh),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
         },
     ) {
         // 页面级说明**一条都不留**：以前这里堆着"改动下次生效""列表顺序就是加载顺序""这里的已禁用
@@ -107,6 +118,7 @@ internal fun DshExtensionsScreen(
                 DshNote(
                     text = message,
                     color = if (store.messageIsError) StatusError else StatusSuccess,
+                    leadingPadding = 16.dp,
                 )
             }
         }
@@ -447,22 +459,27 @@ private fun DshGroupGap() {
     Spacer(Modifier.height(16.dp))
 }
 
-/** 页面级说明与结果提示；footnote2 + 与分组标题同一套留白（同语音设置页的说明行）。 */
+/**
+ * 页面级说明与结果提示（body2，不是脚注 —— 真机反馈"小字…看的一脸懵逼"）。
+ *
+ * 两种对齐各归各位：
+ *   · 页面级提示（[leadingPadding] = 16dp）与**分组标题**对齐 —— 它说的是整页的事
+ *     （真机反馈：与扩展页的分组标题没对齐）；
+ *   · 分区说明（默认 32dp）与**卡片文字**对齐：卡片是 `EtaPreferenceGroupItem(16dp)` 里
+ *     再套 `EtaPreferenceRow`（自己还有 16dp），文字就在 32dp 处。
+ */
 @Composable
 private fun DshNote(
     text: String,
     color: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
     modifier: Modifier = Modifier,
+    leadingPadding: Dp = 32.dp,
 ) {
     Text(
         text = text,
-        // body2 而不是 footnote2：这些是给人读的说明，不是脚注（真机反馈"小字…看的一脸懵逼"）。
-        // 左边距 32dp = 卡片文字的起点：卡片是 `EtaPreferenceGroupItem(16dp)` 里再套
-        // `EtaPreferenceRow`（自己还有 16dp），所以文字在 32dp 处。上一版我改成 16dp，结果说明
-        // 比卡片文字往左凸出一截（真机反馈"预设下面的选择 agent 工具没有对齐""插件那一排也没有对齐"）。
         style = MiuixTheme.textStyles.body2,
         color = color,
-        modifier = modifier.padding(start = 32.dp, top = 6.dp, end = 16.dp, bottom = 6.dp),
+        modifier = modifier.padding(start = leadingPadding, top = 6.dp, end = 16.dp, bottom = 6.dp),
     )
 }
 
@@ -690,23 +707,17 @@ private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset)
     } else {
         DshPresetGuides.description(context, preset.id, locale)
     }
-    // 说明按钮：官方那份「这个预设能干什么 + 示例用法」（与客户端同一个来源）。
+    // 说明按钮：官方那份「模式说明 + 如何使用」（与客户端同一个来源），就是一个感叹号，
+    // 紧跟在名字后面（真机反馈："不应该有那个查看说明，也应该是一个感叹号"）。
     var guideOpen by remember { mutableStateOf(false) }
-    // 用仓库既有的**单选行**（同 `CharacterDetailScreen` 的用法）：行尾是固定尺寸的单选圈，
-    // 选谁都不会改变标题的可用宽度。以前行尾放"新任务默认"这个标签，切换时标题被挤开重排
-    // （真机反馈："新任务默认会把原来的字挤开重新排版，看的很难受"）。
-    // 挂不起来的预设（[DshLivePreset.broken]）不给点，原因写在 summary 里（官方给的那句）。
-    EtaRadioButtonPreference(
-        title = label,
-        summary = summary,
+    // 挂不起来的预设（[DshLivePreset.broken]）不给点，原因写在说明里（官方给的那句）。
+    DshPresetRow(
+        name = label,
+        description = summary,
         selected = selected,
         enabled = broken == null,
-        onClick = { store.selectPreset(preset.id) },
-    )
-    EtaTextButton(
-        text = stringResource(R.string.chat_preset_guide_action, label),
-        onClick = { guideOpen = true },
-        modifier = Modifier.padding(start = 16.dp),
+        onSelect = { store.selectPreset(preset.id) },
+        onGuide = { guideOpen = true },
     )
     DshPresetGuideDialog(presetId = if (guideOpen) preset.id else null) { guideOpen = false }
 }

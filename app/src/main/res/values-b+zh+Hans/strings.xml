@@ -306,8 +306,7 @@
   <string name="ui_lsposed_service_is_not_connected_44734d">LSPosed 服务未连接</string>
   <string name="ui_linux_tool_environment_314d22">Linux 工具环境</string>
   <string name="settings_dsh_runtime_title">重装对话运行时</string>
-  <string name="settings_dsh_runtime_summary">清掉已解包的 dsh 运行时并重新展开（请在对话空闲时操作）</string>
-  <string name="settings_dsh_runtime_confirm">重装会清掉 dsh 侧自己的会话上下文（App 侧历史保留），请在对话空闲时操作。</string>
+  <string name="settings_dsh_runtime_confirm">重装会清掉对话内核自己记的上下文（App 里的聊天记录保留）。对话内核出问题、或者升级完想让它从干净状态开始时用；请在没在跑任务的时候操作。</string>
   <string name="settings_dsh_runtime_busy">正在重新解包运行时，请稍候</string>
   <string name="settings_dsh_runtime_done">对话运行时已重装</string>
   <string name="settings_dsh_runtime_failed">重装失败，请查看日志</string>
@@ -1318,7 +1317,6 @@
   <string name="speech_save_retry">请重试</string>
   <string name="system_notice_model_retry">模型请求重试</string>
   <string name="extensions_title">扩展</string>
-  <string name="extensions_settings_summary">插件包与插件开关</string>
   <string name="extensions_note_hmr">改动下次开对话才生效。</string>
   <string name="extensions_note_order">列表顺序就是运行时自己的加载顺序。</string>
   <string name="extensions_note_plugins">改动下次开对话才生效；列表顺序就是运行时自己的加载顺序。</string>
@@ -1332,6 +1330,7 @@
   <string name="chat_command_goal_none">这个对话还没设过目标。用 /goal &lt;目标&gt; 设一个。</string>
   <string name="chat_command_goal_current">当前目标：%1$s</string>
   <string name="chat_preset_button">预设模式</string>
+  <string name="chat_preset_guide_close">关闭</string>
   <string name="chat_preset_guide_action">查看说明：%1$s</string>
   <string name="chat_preset_picker_title">预设模式</string>
   <string name="chat_preset_picker_summary">选 Agent 的工具与工作方式。切换后下一条消息生效。</string>
@@ -1348,7 +1347,7 @@
   <string name="extensions_refreshing">刷新中…</string>
   <string name="extensions_loading">正在读取插件列表…</string>
   <string name="extensions_runtime_missing">对话运行时还没装好</string>
-  <string name="extensions_runtime_missing_summary">请先去设置里重装对话运行时，再回到这个页面。</string>
+  <string name="extensions_runtime_missing_summary">先到「设置 → 重装对话运行时」点一下，装好再回到这一页。</string>
   <string name="extensions_load_failed">读不到插件列表：%1$s</string>
   <string name="extensions_unreadable">没能读出插件列表，原因见上方。</string>
   <string name="extensions_search_hint">搜索插件名或编号</string>

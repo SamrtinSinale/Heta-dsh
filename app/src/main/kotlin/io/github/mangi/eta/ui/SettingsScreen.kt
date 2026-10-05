@@ -338,7 +338,6 @@ private fun SettingsPageContent(
                     EtaPreferenceDivider()
                     EtaArrowPreference(
                         title = stringResource(R.string.extensions_title),
-                        summary = stringResource(R.string.extensions_settings_summary),
                         startAction = {
                             EtaPreferenceIcon(
                                 icon = Icons.Rounded.Extension,
@@ -427,13 +426,13 @@ private fun SettingsPageContent(
                     EtaPreferenceDivider()
                     EtaArrowPreference(
                         title = stringResource(R.string.settings_dsh_runtime_title),
-                        summary = stringResource(
-                            if (reinstallingDshRuntime) {
-                                R.string.settings_dsh_runtime_busy
-                            } else {
-                                R.string.settings_dsh_runtime_summary
-                            },
-                        ),
+                        // 平时不挂小字（真机反馈"也不需要下面的小字"）；只有真的在重装时
+                        // 才显示进度那句 —— 那时用户需要知道它在干活。
+                        summary = if (reinstallingDshRuntime) {
+                            stringResource(R.string.settings_dsh_runtime_busy)
+                        } else {
+                            null
+                        },
                         startAction = {
                             EtaPreferenceIcon(
                                 icon = Icons.Rounded.Memory,

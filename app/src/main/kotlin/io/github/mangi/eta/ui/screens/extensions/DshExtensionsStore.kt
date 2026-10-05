@@ -351,11 +351,9 @@ internal class DshExtensionsStore(
      * 事实，改不了；页面按本地选择显示"新任务默认"。
      */
     fun selectPreset(id: String) {
-        if (id == selectedPresetId) {
-            message = appContext.getString(R.string.extensions_message_unchanged)
-            messageIsError = false
-            return
-        }
+        // 点已选中的那一行等于什么都没发生（单选行点自己），不给提示 —— 真机反馈这句
+        // "本来就是这状态，没有改动"与"已切换，下一条消息就生效"交替出现，看着像自相矛盾。
+        if (id == selectedPresetId) return
         // 预设不分文件层的写路径：这里不动 profile 补丁层，所以不走 write()（那个路径会去修 owner、
         // 锁 working）。commit() 是一次很小的磁盘写，放 IO 里。
         scope.launch {
