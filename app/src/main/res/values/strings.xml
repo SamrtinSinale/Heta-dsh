@@ -1343,6 +1343,12 @@
   <string name="extensions_settings_summary">Bundles and plugin switches</string>
   <string name="extensions_note_hmr">Changes take effect next time you open a chat.</string>
   <string name="extensions_note_order">The list keeps the runtime load order.</string>
+  <string name="extensions_note_plugins">Changes take effect in the next chat; the list keeps the runtime’s own load order.</string>
+  <string name="extensions_preset_note">Choose the agent’s tools and how it works. A switch here applies to your next message.</string>
+  <string name="extensions_preset_saved">Switched; it applies to your next message.</string>
+  <string name="extensions_preset_custom_name">Custom mode</string>
+  <string name="extensions_preset_custom_summary">Have the agent build a mode of your own: it switches to Creator mode and takes you back to the chat.</string>
+  <string name="extensions_live_probe_override">Off for this read-only pass; it is on in a real chat.</string>
   <string name="extensions_refresh">Refresh</string>
   <string name="extensions_refreshing">Refreshing...</string>
   <string name="extensions_loading">Reading the plugin list...</string>

@@ -1321,6 +1321,12 @@
   <string name="extensions_settings_summary">插件包与插件开关</string>
   <string name="extensions_note_hmr">改动下次开对话才生效。</string>
   <string name="extensions_note_order">列表顺序就是运行时自己的加载顺序。</string>
+  <string name="extensions_note_plugins">改动下次开对话才生效；列表顺序就是运行时自己的加载顺序。</string>
+  <string name="extensions_preset_note">选择 Agent 的工具和工作方式。切换后下一条消息就生效。</string>
+  <string name="extensions_preset_saved">已切换，下一条消息就生效。</string>
+  <string name="extensions_preset_custom_name">自定义模式</string>
+  <string name="extensions_preset_custom_summary">让 Agent 帮你做一个属于自己的模式：会切到「创造模式」并回到对话。</string>
+  <string name="extensions_live_probe_override">这一轮被临时关掉了（真实对话时开着）。</string>
   <string name="extensions_refresh">刷新</string>
   <string name="extensions_refreshing">刷新中…</string>
   <string name="extensions_loading">正在读取插件列表…</string>

@@ -363,7 +363,10 @@ internal class DshExtensionsStore(
                 return@launch
             }
             selectedPresetId = id
-            message = appContext.getString(R.string.extensions_message_saved)
+            // 预设切换**下一条消息就生效**（真机实测），而插件开关要等下一次开对话 —— 两者不能
+            // 共用一句"已保存，下次开对话生效"：真机反馈"切换模式后还是提示已保存下次开对话生效，
+            // 和预设下面那句冲突了"。
+            message = appContext.getString(R.string.extensions_preset_saved)
             messageIsError = false
         }
     }

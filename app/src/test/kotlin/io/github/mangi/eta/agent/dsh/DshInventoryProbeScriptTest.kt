@@ -210,7 +210,9 @@ class DshInventoryProbeScriptTest {
         )
         // agent 平面让位：24 行，且每一行都是 disabled: true。
         val managed = DshPresetPlane.managedRowIds { path -> asset(path) }
-        assertEquals("托管的行数不是 24（官方 Web 那段就是 24 行）", 24, managed.size)
+        // 官方 dsh-web-app 那段是 24 行；第 25 行是 Heta 自己的补充（`pwsh-sandbox`：Android 上
+        // 没有 PowerShell，留着一个永远"启动失败"的插件没有意义，见 plane-disable.patch.yml 末尾）。
+        assertEquals("托管的行数不对（官方 24 + Heta 补充 1）", 25, managed.size)
         assertTrue("tool-bash 不在托管列表里", "tool-bash" in managed)
         assertTrue("tool-web 不在托管列表里", "tool-web" in managed)
         managed.forEach { id ->

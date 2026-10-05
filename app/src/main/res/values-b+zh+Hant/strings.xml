@@ -1309,6 +1309,12 @@
   <string name="extensions_settings_summary">外掛包與外掛開關</string>
   <string name="extensions_note_hmr">改動下次開對話才生效。</string>
   <string name="extensions_note_order">清單順序就是執行階段自己的載入順序。</string>
+  <string name="extensions_note_plugins">改動下次開對話才生效；清單順序就是執行階段自己的載入順序。</string>
+  <string name="extensions_preset_note">選擇 Agent 的工具與工作方式。切換後下一則訊息就生效。</string>
+  <string name="extensions_preset_saved">已切換，下一則訊息就生效。</string>
+  <string name="extensions_preset_custom_name">自訂模式</string>
+  <string name="extensions_preset_custom_summary">讓 Agent 幫你做一個屬於自己的模式：會切到「創造模式」並回到對話。</string>
+  <string name="extensions_live_probe_override">這一輪被暫時關掉了（真實對話時開著）。</string>
   <string name="extensions_refresh">重新整理</string>
   <string name="extensions_refreshing">重新整理中…</string>
   <string name="extensions_loading">正在讀取外掛清單…</string>
@@ -1372,4 +1378,16 @@
   <string name="extensions_preset_set_default">設為新任務預設</string>
   <string name="extensions_preset_broken">載入失敗</string>
   <string name="extensions_preset_broken_summary">這個預設現在載入不了：%1$s</string>
+  <string name="action_export">匯出</string>
+  <string name="conversation_exported">已匯出</string>
+  <string name="conversation_export_failed">匯出失敗</string>
+  <string name="conversation_export_user">使用者</string>
+  <string name="conversation_export_assistant">助理</string>
+  <string name="conversation_export_thinking">思考</string>
+  <string name="conversation_export_tool_line">工具：%1$s（%2$s）</string>
+  <string name="conversation_export_tools_line">工具：%1$s</string>
+  <string name="conversation_export_tool_arguments">參數：%1$s</string>
+  <string name="conversation_export_tool_result">結果：%1$s</string>
+  <string name="conversation_export_images">圖片：%1$d</string>
+  <string name="conversation_export_default_name">對話</string>
 </resources>

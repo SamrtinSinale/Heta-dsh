@@ -37,6 +37,9 @@ internal object DshPresetPlane {
     /** 部署默认值：官方 `dsh-web-app/cordis.patch.yml:565` 就是 `default: standard`。 */
     const val DEFAULT_PRESET = "standard"
 
+    /** 创造模式：官方四份声明里的 `cordis`（id 就是它，客户端文案叫「创造模式」）。 */
+    const val CREATOR_PRESET = "cordis"
+
     /** join 插件：官方把"会话 → 预设"放在 Web 浏览器半边，ACP 这条路上只能我们自己补。 */
     const val JOIN_ASSET = "heta-preset-join.mjs"
 

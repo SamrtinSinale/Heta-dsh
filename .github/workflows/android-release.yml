@@ -277,6 +277,11 @@ jobs:
       - name: Kotlin 注释嵌套自检
         run: python3 scripts/check-kotlin-comment-nesting.py
 
+      # 字符串资源的两条硬约束：未转义的 ASCII 撇号（aapt2 的 "Invalid unicode escape"，
+      # 在 mergeDebugResources 才炸）与三份文件键集不一致（漏键只回落到英文，编译不报）。
+      - name: Android 字符串资源自检
+        run: python3 scripts/check-android-strings.py
+
       # 预设 join 插件的守卫决策表。纯 node，不碰 dsh、不碰模拟器 —— 它挡的是那两种最贵的错：
       # 该绑的不绑（agent 平面已经让位，会话就一行工具都没有）与不该绑的也绑（子 agent 撞上
       # 官方 composeFrom 的 "Child already joined a preset"）。正例由下面的端到端冒烟覆盖。

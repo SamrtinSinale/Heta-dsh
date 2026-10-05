@@ -83,3 +83,16 @@
 
 - id: tool-web
   disabled: true
+
+# ── Heta 的补充：Android/Linux 上起不来的那一行 ──────────────────────────────
+#
+# `pwsh-sandbox` 在 dsh-base 里带平台判断：
+#     - id: pwsh-sandbox
+#       name: '@deepseek-ai/dsh-pwsh-sandbox'
+#       disabled: !!js process.platform !== 'win32'
+# 但 profile 补丁层里一行固定的 `disabled: false` 会盖掉它（真机实测：配置状态"已启用"、
+# 运行状态"启动失败"，详情写着"另外还被 profile 补丁层 改过"）。Heta 跑在 Android 的 Linux
+# chroot 里，没有 PowerShell，这个沙箱在这里永远起不来 —— 和 `tool-pwsh` 一起按掉，
+# 页面上就不再有一个永远失败的插件。
+- id: pwsh-sandbox
+  disabled: true

@@ -33,12 +33,14 @@ import io.github.mangi.eta.agent.dsh.DshInventoryRow
 import io.github.mangi.eta.agent.dsh.DshLiveEntry
 import io.github.mangi.eta.agent.dsh.DshLiveInventory
 import io.github.mangi.eta.agent.dsh.DshLivePreset
+import io.github.mangi.eta.agent.dsh.DshPresetPlane
 import io.github.mangi.eta.agent.dsh.DshRowState
 import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupItem
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupTitle
+import io.github.mangi.eta.ui.components.EtaRadioButtonPreference
 import io.github.mangi.eta.ui.components.EtaSwitch
 import io.github.mangi.eta.ui.components.EtaSwitchPreference
 import io.github.mangi.eta.ui.components.EtaTextButton
@@ -52,6 +54,9 @@ import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** dsh 报的"运行中"这个 phase 的字面量（命中它就不在行上写状态，见 DshLiveSwitchRow）。 */
+private const val ACTIVE_PHASE = "active"
+
 /**
  * 扩展页：dsh 的 bundle 选中与插件行开关。
  *
@@ -60,7 +65,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 那两种理由只有数据层知道，翻一遍反而把信息丢了。
  */
 @Composable
-internal fun DshExtensionsScreen(context: Context, onBack: () -> Unit) {
+internal fun DshExtensionsScreen(
+    context: Context,
+    onBack: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val store = remember { DshExtensionsStore(context, scope) }
     // 搜索词只活在这一页里：按模块名 / 行编号做本地过滤，不碰清单、也不重新探针。
@@ -85,14 +93,9 @@ internal fun DshExtensionsScreen(context: Context, onBack: () -> Unit) {
             )
         },
     ) {
-        item(key = "hmr_note") {
-            DshNote(stringResource(R.string.extensions_note_hmr))
-        }
-        // 顺序就是数据层给的那个顺序，这里不排序、也不假装能排。
-        item(key = "order_note") {
-            DshNote(stringResource(R.string.extensions_note_order))
-        }
-
+        // 页面级说明**一条都不留**：以前这里堆着"改动下次生效""列表顺序就是加载顺序""这里的已禁用
+        // 只是临时清单"三四条小灰字，真机反馈原话是"看的一脸懵逼"。现在各自归到所属那一段：
+        // 预设段一条、插件段一条，见 dshLiveSections。
         val message = store.message
         if (message != null) {
             item(key = "message") {
@@ -259,17 +262,21 @@ private fun dshRowMatches(query: String, moduleName: String?, patchId: String?):
 @Composable
 private fun DshBundleSwitchRow(store: DshExtensionsStore, bundle: DshInventoryBundle) {
     // 读不出来的原因、以及"不许关"的原因，都贴在行下：两件事都是这一行自己的属性。
-    // joinToString 之后非空化，是为了让下面那个 lambda 里不需要任何智能转换。
-    val note = listOfNotNull(bundle.problem, bundle.readOnlyReason).joinToString("\n")
-    val bottom: (@Composable () -> Unit)? = if (note.isEmpty()) {
+    // "为什么不能关"是**说明**，不是错误：它以前和真故障一起用红字贴在行下（真机反馈
+    // "红字…看的一脸懵逼"）。现在它当这一行的 summary —— 全 App 统一的说明样式；
+    // 只有真读不出来（[DshInventoryBundle.problem]）才用红字，因为那确实是故障。
+    val bottom: (@Composable () -> Unit)? = if (bundle.problem == null) {
         null
     } else {
-        { DshProblem(note, Modifier.padding(vertical = 2.dp)) }
+        { DshProblem(bundle.problem, Modifier.padding(vertical = 2.dp)) }
     }
     EtaSwitchPreference(
         title = bundle.name,
         // 没读出来的包行数是 0，那不是"它有 0 行"，所以不显示。
-        summary = if (bundle.isBundle) stringResource(R.string.extensions_bundle_rows, bundle.rowCount) else null,
+        summary = listOfNotNull(
+            if (bundle.isBundle) stringResource(R.string.extensions_bundle_rows, bundle.rowCount) else null,
+            bundle.readOnlyReason,
+        ).joinToString("\n"),
         // 本地刚点过的那个值优先：写完不再重读清单（见 DshExtensionsStore.pendingBundles）。
         checked = store.bundleSelected(bundle),
         // 管理/入口 bundle 不给关：关了运行时自己就起不来（数据层给的理由显示在下面）。
@@ -287,13 +294,8 @@ private fun DshPluginSwitchRow(store: DshExtensionsStore, row: DshInventoryRow) 
     val state = store.stateFor(row)
     val unresolved = state == DshRowState.UNRESOLVED
     val toggleable = !unresolved && !store.working && row.readOnlyReason == null
-    val unresolvedNote = if (unresolved) stringResource(R.string.extensions_row_unresolved) else null
-    val patchedNote = if (row.mentionedBy.isEmpty()) {
-        null
-    } else {
-        stringResource(R.string.extensions_row_mentioned_by, row.mentionedBy.joinToString(", "))
-    }
-    val summary = listOfNotNull(unresolvedNote, patchedNote, row.readOnlyReason).joinToString("\n")
+    // 行上只说"不正常"的那一件；"被谁改过""为什么改不了"收进展开详情（同活清单那一行）。
+    val summary = if (unresolved) stringResource(R.string.extensions_row_unresolved) else ""
     // 用 EtaPreference 而不是 EtaSwitchPreference：后者整行都是开关，展开的详情没地方挂。
     // **整行点击 = 展开 / 收起**（行尾没有箭头按钮），所以这里的 `enabled` 只表示"整行可点"，
     // 与开关能不能动无关（灰色行也要能展开看细节，所以恒为 true）；开关仍然只是开关：
@@ -364,6 +366,12 @@ private fun DshPluginSwitchRow(store: DshExtensionsStore, row: DshInventoryRow) 
             label = stringResource(R.string.extensions_detail_source),
             value = row.source,
         )
+        row.readOnlyReason?.let { DshDetailNote(it) }
+        if (row.mentionedBy.isNotEmpty()) {
+            DshDetailNote(
+                stringResource(R.string.extensions_row_mentioned_by, row.mentionedBy.joinToString(", ")),
+            )
+        }
     }
 }
 
@@ -436,9 +444,13 @@ private fun DshNote(
 ) {
     Text(
         text = text,
-        style = MiuixTheme.textStyles.footnote2,
+        // body2 而不是 footnote2：这些是给人读的说明，不是脚注（真机反馈"小字…看的一脸懵逼"）。
+        // 左边距 32dp = 卡片文字的起点：卡片是 `EtaPreferenceGroupItem(16dp)` 里再套
+        // `EtaPreferenceRow`（自己还有 16dp），所以文字在 32dp 处。上一版我改成 16dp，结果说明
+        // 比卡片文字往左凸出一截（真机反馈"预设下面的选择 agent 工具没有对齐""插件那一排也没有对齐"）。
+        style = MiuixTheme.textStyles.body2,
         color = color,
-        modifier = modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+        modifier = modifier.padding(start = 32.dp, top = 6.dp, end = 16.dp, bottom = 6.dp),
     )
 }
 
@@ -469,8 +481,6 @@ private fun LazyListScope.dshLiveSections(
     entries: List<DshLiveEntry>,
     searching: Boolean,
 ) {
-    if (!searching) item(key = "live_note") { DshNote(stringResource(R.string.extensions_live_note)) }
-
     // 预设排在插件行**前面**：这一页要回答的第一个问题是"用哪一套"，插件行才是"这套里每一行
     // 是什么"。官方客户端也是先给预设卡片。真机反馈过"预设为什么在最底部"——107 条行之后它
     // 就等于藏起来了。
@@ -478,11 +488,9 @@ private fun LazyListScope.dshLiveSections(
         item(key = "presets_title") {
             EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_presets))
         }
-        item(key = "presets_intro") { DshNote(stringResource(R.string.extensions_preset_intro)) }
-        // 用户实测过：切换之后**下一条消息**就用新的预设，不用开新对话（每一轮 run 都是新进程 +
-        // session/resume，注册表按当前 default 重新解析）。所以这里不能照抄插件行那句
-        // "改动下次开对话才生效"，否则等于教人做多余的操作。
-        item(key = "presets_effect") { DshNote(stringResource(R.string.extensions_preset_effect)) }
+        // 一段只留一条说明（正常字号，见 DshNote）。这句里也带着"切换后下一条消息就生效"——
+        // 用户实测确认，不能照抄插件行那句"下次开对话才生效"（那会教人做多余的操作）。
+        item(key = "presets_note") { DshNote(stringResource(R.string.extensions_preset_note)) }
         // 一张卡片一个预设：**点整行 = 设为新任务默认**（写 App 的偏好，下一轮 run 生效）。
         // 这里刻意**不**逐条列出组合行：那是 29×4 行的噪声，组合详情在文件视图里逐行可查。
         live.presets.forEachIndexed { index, preset ->
@@ -496,8 +504,9 @@ private fun LazyListScope.dshLiveSections(
                 }
             }
         }
-        // 自定义预设照官方的路子走：客户端也是"创造模式里让 Agent 写一个"，Heta 不另造一套编辑器。
-        item(key = "presets_custom") { DshNote(stringResource(R.string.extensions_preset_custom)) }
+        // 这里**不再**单独放一张「自定义模式」卡：真机反馈一句点破 ——「自定义预设就是创造预设啊」。
+        // 那张卡唯一做的事就是把默认切到创造模式，而"创造模式"本来就在上面四张卡里，说明也写着
+        // "…也能组合工具和提示词，创建自己的模式"。重复的入口只会让人多问一次"这两个有什么区别"。
         item(key = "presets_gap") { DshGroupGap() }
     }
 
@@ -506,6 +515,8 @@ private fun LazyListScope.dshLiveSections(
         item(key = "live_title") {
             EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_live))
         }
+        // 插件段只留这一条说明（把原来页面顶部那两条并进来）。
+        if (!searching) item(key = "plugins_note") { DshNote(stringResource(R.string.extensions_note_plugins)) }
         // 一行一个 item（卡片外观与分割线由 EtaPreferenceGroupItem 负责，同 ProviderModelsTab 的模型
         // 列表）：上百条活条目时也只组合看得见的那几行；"展开一行"只影响它自己那一项。
         // 行高恒定 + 详情挂在行的下面 —— 见 DshExpandableDetails。
@@ -552,16 +563,16 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
     val toggleable = switchable && blocked == null && row != null && !store.working
     val configState = configStateLabel(store.enabledFor(entry))
     val runtimeState = runtimeStateLabel(entry.fiberPhase)
+    // 文件层说它是开着的、这一轮却读到关着 —— 那是**探针**为了腾出 stdio 自己关掉的
+    //（见 DshInventoryProbe），真实对话里它是开着的。以前这层意思靠页面顶部一条小灰字解释，
+    // 现在写在**这一行自己**身上。
+    val probeOverride = row?.state == DshRowState.ENABLED && !store.enabledFor(entry)
+    // **行上只写不正常的事**：开着且运行中就一行字都不写。以前每行都挂一句"已启用 · 运行中"，
+    // 107 行就是这么糊起来的（真机反馈"你的扩展页面很冗杂"）。编号 / 来源 / 为什么改不了 /
+    // 被谁改过，全部收进展开详情。
     val summary = listOfNotNull(
-        stringResource(R.string.extensions_live_summary, configState, runtimeState),
-        if (patchId == null) stringResource(R.string.extensions_live_no_patch_id) else null,
-        // 文件层里查不到这一行：开关先别给点（改哪一行都不确定），并说清楚下一步怎么办。
-        if (patchId != null && row == null) {
-            stringResource(R.string.extensions_live_not_in_layer)
-        } else {
-            null
-        },
-        blocked,
+        if (probeOverride) stringResource(R.string.extensions_live_probe_override) else null,
+        if (entry.fiberPhase != null && entry.fiberPhase != ACTIVE_PHASE) runtimeState else null,
     ).joinToString("\n")
     // 同 DshPluginSwitchRow：整行点击 = 展开 / 收起，行尾只留开关（没有箭头按钮）；
     // 开关仍然只是开关，点它不会连带展开。
@@ -595,16 +606,19 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
                 MiuixTheme.colorScheme.disabledOnSurface
             },
         )
-        Text(
-            text = summary,
-            style = MiuixTheme.textStyles.body2,
-            color = if (toggleable) {
-                MiuixTheme.colorScheme.onSurfaceVariantSummary
-            } else {
-                MiuixTheme.colorScheme.disabledOnSurface
-            },
-            modifier = Modifier.padding(top = 2.dp),
-        )
+        // 空说明不画：一个空 Text 也会占一行高度，107 行就是 107 行多余的空白。
+        if (summary.isNotEmpty()) {
+            Text(
+                text = summary,
+                style = MiuixTheme.textStyles.body2,
+                color = if (toggleable) {
+                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                } else {
+                    MiuixTheme.colorScheme.disabledOnSurface
+                },
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
     DshExpandableDetails(visible = expanded) {
         DshDetailLine(stringResource(R.string.extensions_detail_entry_id), entry.entryId)
@@ -617,7 +631,28 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
         DshDetailLine(stringResource(R.string.extensions_detail_runtime_state), runtimeState)
         // 文件视图里有这一行才说得出"它来自哪一层"；没有就不编。
         row?.let { DshDetailLine(stringResource(R.string.extensions_detail_source), it.source) }
+        // 下面这些以前贴在行上（于是每行都是两三行小字），现在只在展开时出现。
+        blocked?.let { DshDetailNote(it) }
+        row?.takeIf { it.mentionedBy.isNotEmpty() }?.let {
+            DshDetailNote(
+                stringResource(R.string.extensions_row_mentioned_by, it.mentionedBy.joinToString(", ")),
+            )
+        }
+        if (patchId != null && row == null) {
+            DshDetailNote(stringResource(R.string.extensions_live_not_in_layer))
+        }
     }
+}
+
+/** 详情里的一行整句（不是"标签：值"那种）：用来放"为什么改不了"这类现成句子。 */
+@Composable
+private fun DshDetailNote(text: String) {
+    Text(
+        text = text,
+        style = MiuixTheme.textStyles.footnote1,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier.padding(top = 2.dp),
+    )
 }
 
 /**
@@ -641,73 +676,37 @@ private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset)
     } else {
         dshPresetSummary(preset.id)
     }
-    EtaPreference(
+    // 用仓库既有的**单选行**（同 `CharacterDetailScreen` 的用法）：行尾是固定尺寸的单选圈，
+    // 选谁都不会改变标题的可用宽度。以前行尾放"新任务默认"这个标签，切换时标题被挤开重排
+    // （真机反馈："新任务默认会把原来的字挤开重新排版，看的很难受"）。
+    // 挂不起来的预设（[DshLivePreset.broken]）不给点，原因写在 summary 里（官方给的那句）。
+    EtaRadioButtonPreference(
+        title = label,
+        summary = summary,
+        selected = selected,
         enabled = broken == null,
-        onClick = if (broken == null) ({ store.selectPreset(preset.id) }) else null,
-        onClickLabel = if (broken == null) stringResource(R.string.extensions_preset_set_default) else null,
-        endActions = {
-            // 行尾只放状态：选中 = "新任务默认"；挂不起来 = "加载失败"（红字）。没有可选项时
-            // （既没选中也不坏）什么都不放 —— 那正是"可以点它来选"的常态。
-            val badge = when {
-                broken != null -> stringResource(R.string.extensions_preset_broken)
-                selected -> stringResource(R.string.extensions_preset_in_use)
-                else -> null
-            }
-            if (badge != null) {
-                Text(
-                    text = badge,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = if (broken != null) {
-                        MiuixTheme.colorScheme.error
-                    } else {
-                        MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    },
-                )
-            }
-        },
-    ) {
-        Text(
-            text = label,
-            style = MiuixTheme.textStyles.body1,
-            fontWeight = FontWeight.Medium,
-            color = if (broken == null) {
-                MiuixTheme.colorScheme.onBackground
-            } else {
-                MiuixTheme.colorScheme.disabledOnSurface
-            },
-        )
-        if (summary != null) {
-            Text(
-                text = summary,
-                style = MiuixTheme.textStyles.body2,
-                color = if (broken == null) {
-                    MiuixTheme.colorScheme.onSurfaceVariantSummary
-                } else {
-                    MiuixTheme.colorScheme.disabledOnSurface
-                },
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-    }
+        onClick = { store.selectPreset(preset.id) },
+    )
 }
 
 /** 官方那四个预设的名字；查不到（自定义预设）返回 null，由调用方退回 roster 给的 name。 */
 @Composable
 private fun dshPresetLabel(id: String): String? = when (id) {
-    "standard" -> stringResource(R.string.extensions_preset_standard_name)
+    DshPresetPlane.DEFAULT_PRESET -> stringResource(R.string.extensions_preset_standard_name)
     "ptc" -> stringResource(R.string.extensions_preset_ptc_name)
     "minimal" -> stringResource(R.string.extensions_preset_minimal_name)
-    "cordis" -> stringResource(R.string.extensions_preset_cordis_name)
+    // 创造模式：它的 id 就是 cordis（见 DshPresetPlane.CREATOR_PRESET）。
+    DshPresetPlane.CREATOR_PRESET -> stringResource(R.string.extensions_preset_cordis_name)
     else -> null
 }
 
 /** 官方那四个预设的一句话说明；查不到返回 null（那就只显示名字）。 */
 @Composable
 private fun dshPresetSummary(id: String): String? = when (id) {
-    "standard" -> stringResource(R.string.extensions_preset_standard_summary)
+    DshPresetPlane.DEFAULT_PRESET -> stringResource(R.string.extensions_preset_standard_summary)
     "ptc" -> stringResource(R.string.extensions_preset_ptc_summary)
     "minimal" -> stringResource(R.string.extensions_preset_minimal_summary)
-    "cordis" -> stringResource(R.string.extensions_preset_cordis_summary)
+    DshPresetPlane.CREATOR_PRESET -> stringResource(R.string.extensions_preset_cordis_summary)
     else -> null
 }
 
