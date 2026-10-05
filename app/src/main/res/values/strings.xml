@@ -1344,7 +1344,6 @@
   <string name="extensions_note_hmr">Changes take effect next time you open a chat.</string>
   <string name="extensions_note_order">The list keeps the runtime load order.</string>
   <string name="extensions_note_plugins">Changes take effect in the next chat; the list keeps the runtime’s own load order.</string>
-  <string name="chat_command_button">Slash commands</string>
   <string name="chat_command_plan_hint">Enter plan mode: plan first, act after you approve</string>
   <string name="chat_command_plan_off_hint">Leave plan mode</string>
   <string name="chat_command_goal_hint">Set a goal — type the objective after the command</string>
@@ -1354,6 +1353,8 @@
   <string name="chat_mode_tag_remove">Turn off %1$s</string>
   <string name="chat_command_goal_none">No goal has been set in this conversation yet. Use /goal &lt;objective&gt;.</string>
   <string name="chat_command_goal_current">Current goal: %1$s</string>
+  <string name="chat_preset_button">Preset mode</string>
+  <string name="chat_preset_guide_action">View guide: %1$s</string>
   <string name="chat_preset_picker_title">Preset mode</string>
   <string name="chat_preset_picker_summary">Picks this agent’s tools and working style. Takes effect on your next message.</string>
   <string name="chat_mode_plan_on">Plan mode on — takes effect on your next message.</string>
@@ -1416,14 +1417,6 @@
   <string name="extensions_preset_conditional">depends on a condition</string>
   <string name="extensions_preset_condition">Condition</string>
   <string name="extensions_preset_intro">Choose the agent’s tools and how it works. Use Standard mode for everyday tasks, or Creator mode to add capabilities to DSH.</string>
-  <string name="extensions_preset_standard_name">Standard mode</string>
-  <string name="extensions_preset_standard_summary">Work with code, files, and information. Suitable for most tasks, with search, editing, terminal commands, and other tools available as needed.</string>
-  <string name="extensions_preset_ptc_name">PTC mode</string>
-  <string name="extensions_preset_ptc_summary">Includes all Standard mode capabilities. Better suited to tasks that call tools in batches and then filter, organize, deduplicate, count, or summarize the results.</string>
-  <string name="extensions_preset_minimal_name">Minimal mode</string>
-  <string name="extensions_preset_minimal_summary">The agent works using only a terminal tool. Useful for testing and comparing its basic performance.</string>
-  <string name="extensions_preset_cordis_name">Creator mode</string>
-  <string name="extensions_preset_cordis_summary">Customize DSH through conversation. Let the agent write plugins that add features or UI, or combine tools and prompts to create your own mode.</string>
   <string name="extensions_preset_in_use">New task default</string>
   <string name="extensions_preset_set_default">Set as new task default</string>
   <string name="extensions_preset_broken">Failed to load</string>

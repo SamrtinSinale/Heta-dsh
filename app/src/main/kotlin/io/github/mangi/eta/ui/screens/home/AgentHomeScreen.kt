@@ -20,6 +20,8 @@ import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 internal fun AgentHomeScreen(
     state: AgentChatHomeUiState,
     modelPickerState: AgentModelPickerUiState,
+    presetId: String,
+    onPresetSelected: (String) -> Unit,
     sessionModes: DshSessionModes,
     onPlanModeChange: (Boolean) -> Unit,
     onGoalChange: (String) -> Unit,
@@ -42,6 +44,8 @@ internal fun AgentHomeScreen(
             messageEdit = state.messageEdit,
             characterName = state.roleplay?.characterName,
             onReasoningEffortChange = { onAction(AgentHomeAction.ReasoningEffortChanged(it)) },
+            presetId = presetId,
+            onPresetSelected = onPresetSelected,
             sessionModes = sessionModes,
             onPlanModeChange = onPlanModeChange,
             onGoalChange = onGoalChange,

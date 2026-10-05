@@ -24,6 +24,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
@@ -34,6 +36,7 @@ import io.github.mangi.eta.agent.dsh.DshInventoryRow
 import io.github.mangi.eta.agent.dsh.DshLiveEntry
 import io.github.mangi.eta.agent.dsh.DshLiveInventory
 import io.github.mangi.eta.agent.dsh.DshLivePreset
+import io.github.mangi.eta.agent.dsh.DshPresetGuides
 import io.github.mangi.eta.agent.dsh.DshPresetPlane
 import io.github.mangi.eta.agent.dsh.DshRowState
 import io.github.mangi.eta.ui.components.EtaPreference
@@ -50,8 +53,7 @@ import io.github.mangi.eta.ui.components.MiuixScaffoldPage
 import io.github.mangi.eta.ui.components.StatusError
 import io.github.mangi.eta.ui.components.StatusSuccess
 import io.github.mangi.eta.ui.components.StatusWarning
-import io.github.mangi.eta.ui.components.dshPresetLabel
-import io.github.mangi.eta.ui.components.dshPresetSummary
+import io.github.mangi.eta.ui.components.DshPresetGuideDialog
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.Text
@@ -680,12 +682,16 @@ private fun DshDetailNote(text: String) {
 private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset) {
     val broken = preset.broken
     val selected = store.selectedPresetId == preset.id
-    val label = dshPresetLabel(preset.id) ?: preset.name
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val label = DshPresetGuides.name(context, preset.id, locale) ?: preset.name
     val summary = if (broken != null) {
         stringResource(R.string.extensions_preset_broken_summary, broken)
     } else {
-        dshPresetSummary(preset.id)
+        DshPresetGuides.description(context, preset.id, locale)
     }
+    // 说明按钮：官方那份「这个预设能干什么 + 示例用法」（与客户端同一个来源）。
+    var guideOpen by remember { mutableStateOf(false) }
     // 用仓库既有的**单选行**（同 `CharacterDetailScreen` 的用法）：行尾是固定尺寸的单选圈，
     // 选谁都不会改变标题的可用宽度。以前行尾放"新任务默认"这个标签，切换时标题被挤开重排
     // （真机反馈："新任务默认会把原来的字挤开重新排版，看的很难受"）。
@@ -697,6 +703,12 @@ private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset)
         enabled = broken == null,
         onClick = { store.selectPreset(preset.id) },
     )
+    EtaTextButton(
+        text = stringResource(R.string.chat_preset_guide_action, label),
+        onClick = { guideOpen = true },
+        modifier = Modifier.padding(start = 16.dp),
+    )
+    DshPresetGuideDialog(presetId = if (guideOpen) preset.id else null) { guideOpen = false }
 }
 
 /** 配置状态：dsh 报的 `enabled` 是什么就说什么。 */

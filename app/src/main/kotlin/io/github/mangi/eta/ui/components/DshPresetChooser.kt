@@ -1,64 +1,175 @@
 package io.github.mangi.eta.ui.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.dsh.DshPresetGuides
 import io.github.mangi.eta.agent.dsh.DshPresetPlane
+import io.github.mangi.eta.ui.markdown.MarkdownTone
+import io.github.mangi.eta.ui.markdown.StaticMarkdown
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.RadioButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowDialog
+import top.yukonga.miuix.kmp.layout.DialogDefaults
 
 /**
- * 官方那四个预设的名字；查不到（自定义预设）返回 null，由调用方退回 roster 给的 name。
+ * 四个官方预设的单选列表 + 每行一个「说明」按钮。
  *
- * 为什么名字不由 roster 给：官方那四份声明**故意不发布 name**（`dsh-client-ui-agent-preset`
- * 的 `isBuiltInPreset` 注释写着 "A shipped preset publishes no `name`; a declaration that names
- * itself owns its copy"），客户端是拿 id 去查自己的文案表。Heta 照做：id → 资源，查不到才
- * 退回 roster 给的 name（自定义预设走的就是那条）。
+ * 名字与说明都来自**官方客户端那份文案**（[DshPresetGuides] 读 `assets/heta-presets/guide.json`，
+ * 由 `gen_preset_guide.py` 从 `@deepseek-ai/dsh-client-ui-agent-preset` 逐字抽出）—— 包括
+ * `presetStandardName` / `presetStandardDescription` 这些键。查不到（自定义预设）才退回 roster
+ * 给的名字，那正是官方 "a declaration that names itself owns its copy" 的用法。
  *
- * 扩展页与侧栏那个预设弹窗共用这一份：两处各写一张文案表迟早会漂移（同一个 id 两个名字）。
- */
-@Composable
-internal fun dshPresetLabel(id: String): String? = when (id) {
-    DshPresetPlane.DEFAULT_PRESET -> stringResource(R.string.extensions_preset_standard_name)
-    "ptc" -> stringResource(R.string.extensions_preset_ptc_name)
-    "minimal" -> stringResource(R.string.extensions_preset_minimal_name)
-    // 创造模式：它的 id 就是 cordis（见 DshPresetPlane.CREATOR_PRESET）。
-    DshPresetPlane.CREATOR_PRESET -> stringResource(R.string.extensions_preset_cordis_name)
-    else -> null
-}
-
-/** 官方那四个预设的一句话说明；查不到返回 null（那就只显示名字）。 */
-@Composable
-internal fun dshPresetSummary(id: String): String? = when (id) {
-    DshPresetPlane.DEFAULT_PRESET -> stringResource(R.string.extensions_preset_standard_summary)
-    "ptc" -> stringResource(R.string.extensions_preset_ptc_summary)
-    "minimal" -> stringResource(R.string.extensions_preset_minimal_summary)
-    DshPresetPlane.CREATOR_PRESET -> stringResource(R.string.extensions_preset_cordis_summary)
-    else -> null
-}
-
-/**
- * 四个官方预设的单选列表。
- *
- * 为什么是一个"列表"而不是顶栏那一行文字：预设是**会话级**的选择（覆盖层每轮重建，下一条消息
- * 生效），不是每条消息都要碰的开关。真机反馈原话是"标准模式在右上角太突兀了"—— 放回侧栏那个
- * 设置区（会话列表左下角那排入口）里最自然，聊天页顶栏只留历史与溢出菜单。
+ * 那个 ⓘ 就是真机反馈里说的"客户端可以看提醒，点开有示例用法"：点开是
+ * [DshPresetGuideDialog]，里面是官方的模式说明与示例任务。
  */
 @Composable
 internal fun DshPresetChooser(
     selectedId: String,
     onSelected: (String) -> Unit,
+    onGuide: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
     Column(modifier = modifier.fillMaxWidth()) {
         DshPresetPlane.PRESET_IDS.forEach { id ->
-            EtaRadioButtonPreference(
-                title = dshPresetLabel(id) ?: id,
-                summary = dshPresetSummary(id),
+            DshPresetRow(
+                title = DshPresetGuides.name(context, id, locale) ?: id,
+                summary = DshPresetGuides.description(context, id, locale),
                 selected = id == selectedId,
-                onClick = { onSelected(id) },
+                onSelect = { onSelected(id) },
+                onGuide = { onGuide(id) },
             )
         }
+    }
+}
+
+@Composable
+private fun DshPresetRow(
+    title: String,
+    summary: String?,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onGuide: (() -> Unit)?,
+) {
+    EtaPreferenceRow(
+        title = title,
+        summary = summary,
+        interaction = Modifier.selectable(
+            selected = selected,
+            role = Role.RadioButton,
+            onClick = onSelect,
+        ),
+        endActions = {
+            if (onGuide != null) {
+                IconButton(
+                    onClick = onGuide,
+                    minWidth = 36.dp,
+                    minHeight = 36.dp,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = stringResource(R.string.chat_preset_guide_action, title),
+                        modifier = Modifier.size(20.dp),
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                    )
+                }
+            }
+            RadioButton(
+                selected = selected,
+                onClick = null,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
+        },
+    )
+}
+
+/**
+ * 预设说明弹层：官方的「模式说明」与「示例任务」（示例用法）原文。
+ *
+ * 正文里有 Markdown（`### 标题`、`> 提示词`），所以直接用聊天那套渲染器 —— 原样当纯文本画出来
+ * 会满屏 `###`。
+ */
+@Composable
+internal fun DshPresetGuideDialog(
+    presetId: String?,
+    onDismiss: () -> Unit,
+) {
+    if (presetId == null) return
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val guide = DshPresetGuides.guide(context, presetId, locale) ?: return
+    val labels = DshPresetGuides.labels(context, locale)
+    WindowDialog(
+        show = true,
+        cornerRadius = DialogDefaults.CornerRadius,
+        title = guide.name,
+        summary = guide.description.takeIf { it.isNotBlank() },
+        onDismissRequest = onDismiss,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 420.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            if (guide.intro.isNotBlank()) {
+                Text(
+                    text = guide.intro,
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            if (guide.explanation.isNotBlank()) {
+                DshGuideSection(title = labels.modeExplanation, body = guide.explanation)
+            }
+            if (guide.usage.isNotBlank()) {
+                DshGuideSection(title = labels.exampleTask, body = guide.usage)
+            }
+            EtaTextButton(
+                text = stringResource(R.string.action_confirm),
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DshGuideSection(title: String, body: String) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = title,
+                style = MiuixTheme.textStyles.subtitle,
+                color = MiuixTheme.colorScheme.onSurface,
+            )
+        }
+        StaticMarkdown(
+            content = body,
+            tone = MarkdownTone.Answer,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }

@@ -62,10 +62,13 @@ FILES=(
   "$B/DshSessionMode.kt"
   # 斜杠命令的解析表（纯逻辑，界面那一层靠它决定一行到底进不进模型）。
   "$B/DshSlashCommand.kt"
+  # 官方那份预设说明（名字 / 说明 / 示例用法）的读取。
+  "$B/DshPresetGuide.kt"
   "$T/DshPatchDocumentTest.kt"
   "$T/DshProfileStoreTest.kt"
   "$T/DshPluginInventoryTest.kt"
   "$T/DshSlashCommandTest.kt"
+  "$T/DshPresetGuideTest.kt"
 )
 
 echo "本地编译：${#FILES[@]} 个文件"
@@ -83,7 +86,8 @@ java -cp "$OUT/classes:$JSONJAR:$JUNIT:$HAMCREST:$SNAKEYAML:$KOTLIN_LIB/kotlin-s
   io.github.mangi.eta.agent.dsh.DshPatchDocumentTest \
   io.github.mangi.eta.agent.dsh.DshPluginInventoryTest \
   io.github.mangi.eta.agent.dsh.DshProfileStoreTest \
-  io.github.mangi.eta.agent.dsh.DshSlashCommandTest
+  io.github.mangi.eta.agent.dsh.DshSlashCommandTest \
+  io.github.mangi.eta.agent.dsh.DshPresetGuideTest
 code=$?
 echo "单测 exit=$code（总计 $(( $(date +%s) - start )) 秒）"
 exit "$code"

@@ -38,7 +38,6 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SportsBar
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -129,7 +128,6 @@ internal fun ConversationPanePanel(
     onOpenSkills: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenPermissions: () -> Unit,
-    onOpenPresets: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // state.conversations 已由 AgentAppState 按标题、预览与消息内容过滤。
@@ -215,7 +213,6 @@ internal fun ConversationPanePanel(
                         onOpenSkills = onOpenSkills,
                         onOpenCharacters = onOpenCharacters,
                         onOpenPermissions = onOpenPermissions,
-                        onOpenPresets = onOpenPresets,
                     )
                     Spacer(Modifier.height(ConversationPanelMetrics.BottomInset))
                 }
@@ -484,7 +481,6 @@ private fun PaneDock(
     onOpenSkills: () -> Unit,
     onOpenCharacters: () -> Unit,
     onOpenPermissions: () -> Unit,
-    onOpenPresets: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -524,14 +520,6 @@ private fun PaneDock(
             icon = Icons.Rounded.SportsBar,
             label = "角色",
             onClick = onOpenCharacters,
-            modifier = Modifier.weight(1f),
-        )
-        // 预设：会话级的选择（下一条消息生效），放这一排设置入口里最自然 ——
-        // 顶栏那一行文字被真机反馈成"太突兀"。
-        DockEntry(
-            icon = Icons.Rounded.Tune,
-            label = "预设",
-            onClick = onOpenPresets,
             modifier = Modifier.weight(1f),
         )
     }

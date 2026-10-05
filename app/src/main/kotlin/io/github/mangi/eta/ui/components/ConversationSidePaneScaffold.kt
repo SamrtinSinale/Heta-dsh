@@ -78,7 +78,6 @@ fun ConversationSidePaneScaffold(
     onConversationExport: (ConversationSummaryUi) -> Unit,
     onConversationDelete: (ConversationSummaryUi) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenPresets: () -> Unit,
     onOpenModelProviders: () -> Unit,
     onOpenTools: () -> Unit,
     onOpenSkills: () -> Unit,
@@ -236,7 +235,6 @@ fun ConversationSidePaneScaffold(
                         onOpenSkills = onOpenSkills,
                         onOpenCharacters = onOpenCharacters,
                         onOpenPermissions = onOpenPermissions,
-                onOpenPresets = onOpenPresets,
                         modifier = Modifier
                             .focusProperties { onEnter = { if (!isRevealed) cancelFocusChange() } }
                             .focusGroup()

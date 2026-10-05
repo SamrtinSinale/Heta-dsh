@@ -81,7 +81,6 @@ fun AgentAppShell(
     onOpenPermissions: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenModelProviders: () -> Unit,
-    onOpenPresets: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -142,7 +141,6 @@ fun AgentAppShell(
                 onOpenSkills = onOpenSkills,
                 onOpenCharacters = onOpenCharacters,
                 onOpenPermissions = onOpenPermissions,
-                onOpenPresets = onOpenPresets,
             ) {
                 pageContent()
             }

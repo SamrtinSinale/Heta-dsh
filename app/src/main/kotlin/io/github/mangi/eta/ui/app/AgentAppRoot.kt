@@ -53,8 +53,6 @@ import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.AppearanceSettingsScreen
 import io.github.mangi.eta.ui.SettingsScreen
-import io.github.mangi.eta.ui.components.DshPresetChooser
-import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.MiuixDialogActions
 import io.github.mangi.eta.ui.model.AgentHomeAction
 import io.github.mangi.eta.ui.model.AgentMemoryAction
@@ -149,7 +147,6 @@ fun AgentAppRoot(
     }
 
     var conversationPaneOpen by remember { mutableStateOf(false) }
-    var presetPickerOpen by remember { mutableStateOf(false) }
     var conversationRenameTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationDeleteTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationExportTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
@@ -327,10 +324,6 @@ fun AgentAppRoot(
             onOpenPermissions = { pushRoute(AppRoute.Permissions) },
             onOpenSettings = { pushRoute(AppRoute.Settings) },
             onOpenModelProviders = { pushRoute(AppRoute.ModelProviders) },
-            onOpenPresets = {
-                conversationPaneOpen = false
-                presetPickerOpen = true
-            },
         ) { padding ->
             Box(
                 modifier = Modifier
@@ -363,6 +356,8 @@ fun AgentAppRoot(
                     AgentHomeScreen(
                         state = agentState.homeState,
                         modelPickerState = agentState.modelPickerState,
+                        presetId = agentState.selectedPresetId,
+                        onPresetSelected = { agentState.selectPreset(it) },
                         sessionModes = agentState.sessionModes,
                         onPlanModeChange = { enabled ->
                             agentState.selectPlanMode(enabled)
@@ -900,27 +895,6 @@ fun AgentAppRoot(
         }
     }
 
-    if (presetPickerOpen) {
-        WindowDialog(
-            show = true,
-            cornerRadius = DialogDefaults.CornerRadius,
-            title = stringResource(R.string.chat_preset_picker_title),
-            summary = stringResource(R.string.chat_preset_picker_summary),
-            onDismissRequest = { presetPickerOpen = false },
-        ) {
-            Column {
-                DshPresetChooser(
-                    selectedId = agentState.selectedPresetId,
-                    onSelected = { agentState.selectPreset(it) },
-                )
-                EtaTextButton(
-                    text = stringResource(R.string.action_confirm),
-                    onClick = { presetPickerOpen = false },
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                )
-            }
-        }
-    }
 }
 
 private data class MessageMutationTarget(

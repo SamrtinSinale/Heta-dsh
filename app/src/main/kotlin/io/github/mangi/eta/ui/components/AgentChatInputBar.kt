@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -43,6 +44,7 @@ import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +86,8 @@ import io.github.mangi.eta.ui.model.PendingFileReferenceUi
 import io.github.mangi.eta.ui.model.PendingImageUi
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.DropdownImpl
+import top.yukonga.miuix.kmp.layout.DialogDefaults
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
@@ -124,6 +128,8 @@ internal fun AgentChatInputBar(
     onCompactContext: () -> Unit,
     canCompactContext: Boolean,
     onModelSelected: (String) -> Unit,
+    presetId: String,
+    onPresetSelected: (String) -> Unit,
     sessionModes: DshSessionModes,
     onPlanModeChange: (Boolean) -> Unit,
     onGoalChange: (String) -> Unit,
@@ -153,21 +159,21 @@ internal fun AgentChatInputBar(
     val canSend = textFieldState.text.isNotBlank() ||
         pendingImages.isNotEmpty() ||
         pendingFileReferences.isNotEmpty()
-    val commandButtonLabel = stringResource(R.string.chat_command_button)
-    // 命令菜单：点左下角那个 `/` 打开；在输入框里敲 `/…`（还没有空格）时自动打开。
-    // insertedCommand 记住刚插进去的那一条，免得插完立刻又弹出来。
-    var commandMenuOpen by remember { mutableStateOf(false) }
+    val presetButtonLabel = stringResource(R.string.chat_preset_button)
+    // 预设弹层与说明弹层：都在这一层，因为入口就在输入框上（加号右边）。
+    var presetPickerOpen by remember { mutableStateOf(false) }
+    var guidePresetId by remember { mutableStateOf<String?>(null) }
+    // 命令菜单只由输入驱动：在输入框里敲 `/…`（还没有空格）时自动弹出 —— 真机反馈
+    // "没必要专门放一个 / 按钮"。insertedCommand 记住刚插进去的那一条，免得插完立刻又弹。
     var insertedCommand by remember { mutableStateOf<String?>(null) }
     val commandQuery = textFieldState.text.toString().let { typed ->
         typed.takeIf { it.startsWith("/") && typed.none { character -> character.isWhitespace() } }
     }
-    val showCommandMenu = (commandMenuOpen || commandQuery != null) &&
-        commandQuery != insertedCommand
+    val showCommandMenu = commandQuery != null && commandQuery != insertedCommand
     val insertCommand: (String) -> Unit = { line ->
         // 与官方客户端一样：命令是**写进输入框**的，不是点一下就生效的按钮。
         textFieldState.setTextAndPlaceCursorAtEnd(line)
         insertedCommand = line
-        commandMenuOpen = false
         focusRequester.requestFocus()
         keyboard?.show()
     }
@@ -254,7 +260,12 @@ internal fun AgentChatInputBar(
             onGoalChange = onGoalChange,
         )
 
-        if (showCommandMenu) {
+        // 进出都要有动画：直接出现/消失那一下在真机上被反馈成"没有动画"。
+        AnimatedVisibility(
+            visible = showCommandMenu,
+            enter = fadeIn(tween(140)) + expandVertically(tween(180)),
+            exit = fadeOut(tween(90)) + shrinkVertically(tween(140)),
+        ) {
             DshChatCommandMenu(
                 query = commandQuery,
                 onPick = insertCommand,
@@ -341,28 +352,6 @@ internal fun AgentChatInputBar(
                                 )
                             }
                         } else {
-                            // 斜杠命令入口（输入框左下角）。有模式开着时高亮：状态一眼可见。
-                            IconButton(
-                                onClick = { commandMenuOpen = !commandMenuOpen },
-                                minWidth = ChatInputActionSize,
-                                minHeight = ChatInputActionSize,
-                                modifier = Modifier.semantics {
-                                    contentDescription = commandButtonLabel
-                                },
-                            ) {
-                                Text(
-                                    text = "/",
-                                    style = MiuixTheme.textStyles.subtitle,
-                                    color = if (sessionModes.anyActive) {
-                                        MiuixTheme.colorScheme.primary
-                                    } else {
-                                        MiuixTheme.colorScheme.onSurface
-                                    },
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(2.dp))
-
                             AgentAttachmentPickerButton(
                                 popupAnchorTopPx = inputContainerTopPx,
                                 popupMaxHeight = thinkingPopupMaxHeight,
@@ -371,6 +360,27 @@ internal fun AgentChatInputBar(
                                 onAttachFolder = onAttachFolder,
                                 onAttachFilePath = onAttachFilePath,
                             )
+
+                            Spacer(modifier = Modifier.width(2.dp))
+
+                            // 预设入口：加号右边。斜杠命令那条路只留"在输入框里敲 `/` 自动弹"，
+                            // 所以这个位置让给预设（真机反馈：没必要专门放一个 / 按钮）。
+                            // 用 IconButton 是为了圆形水波纹 —— 手搓 clickable 的灰色块是矩形。
+                            IconButton(
+                                onClick = { presetPickerOpen = true },
+                                minWidth = ChatInputActionSize,
+                                minHeight = ChatInputActionSize,
+                                modifier = Modifier.semantics {
+                                    contentDescription = presetButtonLabel
+                                },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Tune,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ChatInputActionIconSize),
+                                    tint = MiuixTheme.colorScheme.onSurface,
+                                )
+                            }
 
                             Spacer(modifier = Modifier.width(2.dp))
 
@@ -479,6 +489,36 @@ internal fun AgentChatInputBar(
         }
     }
 
+    if (presetPickerOpen) {
+        WindowDialog(
+            show = true,
+            cornerRadius = DialogDefaults.CornerRadius,
+            title = stringResource(R.string.chat_preset_picker_title),
+            summary = stringResource(R.string.chat_preset_picker_summary),
+            onDismissRequest = { presetPickerOpen = false },
+        ) {
+            Column {
+                DshPresetChooser(
+                    selectedId = presetId,
+                    onSelected = {
+                        onPresetSelected(it)
+                        presetPickerOpen = false
+                    },
+                    onGuide = { guidePresetId = it },
+                )
+                EtaTextButton(
+                    text = stringResource(R.string.action_confirm),
+                    onClick = { presetPickerOpen = false },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+            }
+        }
+    }
+
+    DshPresetGuideDialog(
+        presetId = guidePresetId,
+        onDismiss = { guidePresetId = null },
+    )
 }
 
 /** 思考强度选择保持为单一图标，当前状态仅通过图标颜色表达。 */

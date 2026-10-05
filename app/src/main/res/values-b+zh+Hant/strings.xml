@@ -1310,7 +1310,6 @@
   <string name="extensions_note_hmr">改動下次開對話才生效。</string>
   <string name="extensions_note_order">清單順序就是執行階段自己的載入順序。</string>
   <string name="extensions_note_plugins">改動下次開對話才生效；清單順序就是執行階段自己的載入順序。</string>
-  <string name="chat_command_button">斜線指令</string>
   <string name="chat_command_plan_hint">進入計畫模式：先出方案，確認後再動手</string>
   <string name="chat_command_plan_off_hint">退出計畫模式</string>
   <string name="chat_command_goal_hint">設定一個目標 —— 指令後面接著寫目標內容</string>
@@ -1320,6 +1319,8 @@
   <string name="chat_mode_tag_remove">關掉%1$s</string>
   <string name="chat_command_goal_none">這個對話還沒設過目標。用 /goal &lt;目標&gt; 設一個。</string>
   <string name="chat_command_goal_current">目前目標：%1$s</string>
+  <string name="chat_preset_button">預設模式</string>
+  <string name="chat_preset_guide_action">查看說明：%1$s</string>
   <string name="chat_preset_picker_title">預設模式</string>
   <string name="chat_preset_picker_summary">選 Agent 的工具與工作方式。切換後下一則訊息生效。</string>
   <string name="chat_mode_plan_on">計畫模式已開啟，下一則訊息生效。</string>
@@ -1382,14 +1383,6 @@
   <string name="extensions_preset_conditional">視條件而定</string>
   <string name="extensions_preset_condition">條件</string>
   <string name="extensions_preset_intro">選擇 Agent 的工具與工作方式。日常任務用「標準模式」，擴充 DSH 的能力用「創造模式」。</string>
-  <string name="extensions_preset_standard_name">標準模式</string>
-  <string name="extensions_preset_standard_summary">處理程式碼、檔案與資料，適合大多數任務。Agent 會視需要運用檢索、編輯與終端等工具。</string>
-  <string name="extensions_preset_ptc_name">PTC 模式</string>
-  <string name="extensions_preset_ptc_summary">包含標準模式的所有能力，更適合批次呼叫工具，再對結果篩選、整理、去重、統計或彙總的任務。</string>
-  <string name="extensions_preset_minimal_name">極簡模式</string>
-  <string name="extensions_preset_minimal_summary">Agent 只用終端工具完成任務，適合測試與比較它的基本表現。</string>
-  <string name="extensions_preset_cordis_name">創造模式</string>
-  <string name="extensions_preset_cordis_summary">用對話客製 DSH：讓 Agent 撰寫外掛、加入新功能或介面；也能組合工具與提示詞，建立自己的模式。</string>
   <string name="extensions_preset_in_use">新任務預設</string>
   <string name="extensions_preset_set_default">設為新任務預設</string>
   <string name="extensions_preset_broken">載入失敗</string>

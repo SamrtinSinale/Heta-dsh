@@ -1322,7 +1322,6 @@
   <string name="extensions_note_hmr">改动下次开对话才生效。</string>
   <string name="extensions_note_order">列表顺序就是运行时自己的加载顺序。</string>
   <string name="extensions_note_plugins">改动下次开对话才生效；列表顺序就是运行时自己的加载顺序。</string>
-  <string name="chat_command_button">斜杠命令</string>
   <string name="chat_command_plan_hint">进入计划模式：先出方案，确认后再动手</string>
   <string name="chat_command_plan_off_hint">退出计划模式</string>
   <string name="chat_command_goal_hint">设一个目标 —— 命令后面接着写目标内容</string>
@@ -1332,6 +1331,8 @@
   <string name="chat_mode_tag_remove">关掉%1$s</string>
   <string name="chat_command_goal_none">这个对话还没设过目标。用 /goal &lt;目标&gt; 设一个。</string>
   <string name="chat_command_goal_current">当前目标：%1$s</string>
+  <string name="chat_preset_button">预设模式</string>
+  <string name="chat_preset_guide_action">查看说明：%1$s</string>
   <string name="chat_preset_picker_title">预设模式</string>
   <string name="chat_preset_picker_summary">选 Agent 的工具与工作方式。切换后下一条消息生效。</string>
   <string name="chat_mode_plan_on">计划模式已开启，下一条消息生效。</string>
@@ -1394,14 +1395,6 @@
   <string name="extensions_preset_conditional">视条件而定</string>
   <string name="extensions_preset_condition">条件</string>
   <string name="extensions_preset_intro">选择 Agent 的工具和工作方式。日常任务用「标准模式」，扩展 DSH 的能力用「创造模式」。</string>
-  <string name="extensions_preset_standard_name">标准模式</string>
-  <string name="extensions_preset_standard_summary">处理代码、文件和资料，适合大多数任务。Agent 会按需使用检索、编辑和终端等工具。</string>
-  <string name="extensions_preset_ptc_name">PTC 模式</string>
-  <string name="extensions_preset_ptc_summary">包含标准模式的所有能力，更适合批量调用工具，并对结果进行筛选、整理、去重、统计或汇总的任务。</string>
-  <string name="extensions_preset_minimal_name">极简模式</string>
-  <string name="extensions_preset_minimal_summary">Agent 仅使用终端工具完成任务，适合测试和对比其基础表现。</string>
-  <string name="extensions_preset_cordis_name">创造模式</string>
-  <string name="extensions_preset_cordis_summary">用对话定制 DSH：让 Agent 编写插件，添加新功能或界面；也能组合工具和提示词，创建自己的模式。</string>
   <string name="extensions_preset_in_use">新任务默认</string>
   <string name="extensions_preset_set_default">设为新任务默认</string>
   <string name="extensions_preset_broken">加载失败</string>
