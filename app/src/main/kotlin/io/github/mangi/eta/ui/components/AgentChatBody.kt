@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.browser.AgentBrowserSession
+import io.github.mangi.eta.agent.dsh.DshSessionModes
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.ui.app.AgentConversationRevisionReducer
 import io.github.mangi.eta.ui.app.LocalBlurEnabled
@@ -138,6 +139,9 @@ internal fun AgentChatBody(
     onReasoningEffortChange: (ReasoningEffort) -> Unit,
     onCompactContext: () -> Unit,
     canCompactContext: Boolean,
+    sessionModes: DshSessionModes,
+    onPlanModeChange: (Boolean) -> Unit,
+    onGoalChange: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onSubmit: (String) -> Unit,
     onStop: () -> Unit,
@@ -241,6 +245,9 @@ internal fun AgentChatBody(
             onReasoningEffortChange = onReasoningEffortChange,
             onCompactContext = onCompactContext,
             canCompactContext = canCompactContext,
+            sessionModes = sessionModes,
+            onPlanModeChange = onPlanModeChange,
+            onGoalChange = onGoalChange,
             onModelSelected = onModelSelected,
             onStop = onStop,
             onAttachImage = onAttachImage,
@@ -287,6 +294,9 @@ private fun AgentChatScaffold(
     onReasoningEffortChange: (ReasoningEffort) -> Unit,
     onCompactContext: () -> Unit,
     canCompactContext: Boolean,
+    sessionModes: DshSessionModes,
+    onPlanModeChange: (Boolean) -> Unit,
+    onGoalChange: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onStop: () -> Unit,
     onAttachImage: (String) -> Unit,
@@ -341,6 +351,9 @@ private fun AgentChatScaffold(
                 onReasoningEffortChange = onReasoningEffortChange,
                 onCompactContext = onCompactContext,
                 canCompactContext = canCompactContext,
+                sessionModes = sessionModes,
+                onPlanModeChange = onPlanModeChange,
+                onGoalChange = onGoalChange,
                 onModelSelected = onModelSelected,
                 onStop = onStop,
                 onAttachImage = onAttachImage,
@@ -882,6 +895,9 @@ private fun AgentChatBottomBar(
     onReasoningEffortChange: (ReasoningEffort) -> Unit,
     onCompactContext: () -> Unit,
     canCompactContext: Boolean,
+    sessionModes: DshSessionModes,
+    onPlanModeChange: (Boolean) -> Unit,
+    onGoalChange: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onStop: () -> Unit,
     onAttachImage: (String) -> Unit,
@@ -968,6 +984,9 @@ private fun AgentChatBottomBar(
                 onReasoningEffortChange = onReasoningEffortChange,
                 onCompactContext = onCompactContext,
                 canCompactContext = canCompactContext,
+                sessionModes = sessionModes,
+                onPlanModeChange = onPlanModeChange,
+                onGoalChange = onGoalChange,
                 onModelSelected = onModelSelected,
                 onStop = onStop,
                 onAttachImage = onAttachImage,

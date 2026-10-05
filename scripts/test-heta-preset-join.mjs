@@ -11,7 +11,14 @@
  * 用法：node scripts/test-heta-preset-join.mjs
  */
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { mkdirSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+
+// 状态文件写到临时家目录：真机上它是 `$DSH_HOME/heta-modes.json`（/root/.dsh 里那份）。
+const statusHome = join(tmpdir(), `heta-join-guard-${process.pid}`)
+mkdirSync(statusHome, { recursive: true })
+process.env.DSH_HOME = statusHome
 
 const here = dirname(fileURLToPath(import.meta.url))
 // 用 pathToFileURL 拼：手写 `file://${here}/` 在 Windows 的 UNC 路径（\\wsl.localhost\…）下会拼出
@@ -134,6 +141,124 @@ ok(typeof plugin.apply === 'function', 'apply 不是函数')
   }
   ok(!threw, 'mount 抛错时不该把异常抛回事件总线（会把 dsh 的创建流程带崩）')
   ok(h.logs.warn.length === 1, 'mount 抛错时没留 warn 日志')
+}
+
+/**
+ * 模式那一侧的 harness。
+ *
+ * 关键形状：`commands` 是**根**服务（`ctx.get('commands')`），而 `planMode` / `goals` 里
+ * 至少 `planMode` 只存在于**预设的隔离域**里 —— 根上下文取不到，必须按 agent 去
+ * `roster.serviceFor(agent, name)` 里找（真机实测：`ctx.get('planMode')` 是 undefined，
+ * 表现就是"计划模式开了但模型完全不知道"）。这里就按这个形状造。
+ */
+function modeHarness({ planActive = false, goal } = {}) {
+  const executed = []
+  const services = {
+    planMode: { get: () => ({ active: planActive }) },
+    goals: { get: () => goal },
+  }
+  const commands = {
+    execute: async (_agent, line) => {
+      executed.push(line)
+      return { result: { kind: 'success', text: 'ok' } }
+    },
+  }
+  const roster = {
+    composedPreset: () => 'standard',
+    serviceFor: (_agent, name) => services[name],
+  }
+  const events = []
+  const ctx = {
+    logger: { info: () => {}, warn: () => {} },
+    on: (name, handler) => events.push({ name, handler }),
+    get: (name) => (name === 'agentPresets' ? roster : name === 'commands' ? commands : undefined),
+    agents: { roots: () => [{ id: 'a1' }] },
+  }
+  return {
+    ctx,
+    executed,
+    async fire(agent = { id: 'a1', ctx: {} }) {
+      for (const event of events) {
+        if (event.name === 'agent/created') await event.handler({ agent, source: 'startup' })
+      }
+    },
+    status() {
+      try {
+        return JSON.parse(readFileSync(join(statusHome, 'heta-modes.json'), 'utf8'))
+      } catch {
+        return undefined
+      }
+    },
+  }
+}
+
+// 7) 计划模式：隔离域里那个实例要被找到；状态不一致 → 恰好一条 /plan
+{
+  const h = modeHarness({ planActive: false })
+  plugin.apply(h.ctx, { plan: true })
+  await h.fire()
+  ok(h.executed.length === 1 && h.executed[0] === '/plan',
+    `应该恰好执行一次 /plan，实际 ${JSON.stringify(h.executed)}`)
+  const status = h.status()
+  ok(status?.plan?.available === true, '状态文件说计划模式不可用（隔离域里的实例没找到？）')
+  ok(status?.lines?.[0]?.kind === 'success', '状态文件里 /plan 不是 success')
+}
+
+// 8) 状态已经一致 → 一条命令都不发
+{
+  const h = modeHarness({ planActive: true })
+  plugin.apply(h.ctx, { plan: true })
+  await h.fire()
+  ok(h.executed.length === 0, `状态一致时不该发命令，实际 ${JSON.stringify(h.executed)}`)
+}
+
+// 9) 关掉计划模式 → /plan off
+{
+  const h = modeHarness({ planActive: true })
+  plugin.apply(h.ctx, { plan: false })
+  await h.fire()
+  ok(h.executed.length === 1 && h.executed[0] === '/plan off',
+    `应该发 /plan off，实际 ${JSON.stringify(h.executed)}`)
+}
+
+// 10) 目标的四种收敛
+{
+  const create = modeHarness({ goal: undefined })
+  plugin.apply(create.ctx, { goal: '  写一个 README  ' })
+  await create.fire()
+  ok(create.executed.length === 1 && create.executed[0] === '/goal 写一个 README',
+    `没有目标时应该建（并且去掉首尾空白），实际 ${JSON.stringify(create.executed)}`)
+
+  const same = modeHarness({ goal: { objective: '写一个 README', phase: 'active' } })
+  plugin.apply(same.ctx, { goal: '写一个 README' })
+  await same.fire()
+  ok(same.executed.length === 0, `目标没变时不该发命令，实际 ${JSON.stringify(same.executed)}`)
+
+  const edit = modeHarness({ goal: { objective: '旧的', phase: 'active' } })
+  plugin.apply(edit.ctx, { goal: '新的' })
+  await edit.fire()
+  ok(edit.executed.length === 1 && edit.executed[0] === '/goal edit 新的',
+    `换了目标应该 edit，实际 ${JSON.stringify(edit.executed)}`)
+
+  const clear = modeHarness({ goal: { objective: '旧的', phase: 'active' } })
+  plugin.apply(clear.ctx, { goal: '' })
+  await clear.fire()
+  ok(clear.executed.length === 1 && clear.executed[0] === '/goal clear',
+    `空串应该清除目标，实际 ${JSON.stringify(clear.executed)}`)
+
+  const none = modeHarness({ goal: undefined })
+  plugin.apply(none.ctx, { goal: '' })
+  await none.fire()
+  ok(none.executed.length === 0,
+    `本来就没有目标时不该发 /goal clear，实际 ${JSON.stringify(none.executed)}`)
+}
+
+// 11) 没有 config（普通会话）→ 一条命令都不发，也不写状态文件
+{
+  const h = modeHarness({ planActive: false })
+  plugin.apply(h.ctx)
+  await h.fire()
+  ok(h.executed.length === 0, `没有 config 时不该动会话，实际 ${JSON.stringify(h.executed)}`)
 }
 
 if (failures.length > 0) {

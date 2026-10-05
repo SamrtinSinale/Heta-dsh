@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshInventoryBundle
@@ -49,6 +50,8 @@ import io.github.mangi.eta.ui.components.MiuixScaffoldPage
 import io.github.mangi.eta.ui.components.StatusError
 import io.github.mangi.eta.ui.components.StatusSuccess
 import io.github.mangi.eta.ui.components.StatusWarning
+import io.github.mangi.eta.ui.components.dshPresetLabel
+import io.github.mangi.eta.ui.components.dshPresetSummary
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.Text
@@ -148,9 +151,16 @@ internal fun DshExtensionsScreen(
         }
 
         // 搜索框：纯本地过滤，输入多少都不会重新探针。
+        //
+        // `insideMargin = DpSize.Zero` 不能省：miuix 的 SearchBar 默认自带
+        // `SearchBarDefaults.InsideMargin = DpSize(12.dp, 0.dp)`（从 aar 字节码里核出来的），
+        // 叠在下面那 16.dp 上就是左右各 28.dp —— 比同一页的卡片（16.dp）明显窄一圈，
+        // 真机反馈原话是"搜索有点窄"。归零之后它与卡片左右对齐，宽度也就回来了。
+        // 会话侧栏那个搜索框当初就是为这个传的 Zero（ConversationPanePanel）。
         item(key = "search") {
             SearchBar(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                insideMargin = DpSize.Zero,
                 expanded = false,
                 onExpandedChange = {},
                 inputField = {
@@ -687,27 +697,6 @@ private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset)
         enabled = broken == null,
         onClick = { store.selectPreset(preset.id) },
     )
-}
-
-/** 官方那四个预设的名字；查不到（自定义预设）返回 null，由调用方退回 roster 给的 name。 */
-@Composable
-private fun dshPresetLabel(id: String): String? = when (id) {
-    DshPresetPlane.DEFAULT_PRESET -> stringResource(R.string.extensions_preset_standard_name)
-    "ptc" -> stringResource(R.string.extensions_preset_ptc_name)
-    "minimal" -> stringResource(R.string.extensions_preset_minimal_name)
-    // 创造模式：它的 id 就是 cordis（见 DshPresetPlane.CREATOR_PRESET）。
-    DshPresetPlane.CREATOR_PRESET -> stringResource(R.string.extensions_preset_cordis_name)
-    else -> null
-}
-
-/** 官方那四个预设的一句话说明；查不到返回 null（那就只显示名字）。 */
-@Composable
-private fun dshPresetSummary(id: String): String? = when (id) {
-    DshPresetPlane.DEFAULT_PRESET -> stringResource(R.string.extensions_preset_standard_summary)
-    "ptc" -> stringResource(R.string.extensions_preset_ptc_summary)
-    "minimal" -> stringResource(R.string.extensions_preset_minimal_summary)
-    DshPresetPlane.CREATOR_PRESET -> stringResource(R.string.extensions_preset_cordis_summary)
-    else -> null
 }
 
 /** 配置状态：dsh 报的 `enabled` 是什么就说什么。 */

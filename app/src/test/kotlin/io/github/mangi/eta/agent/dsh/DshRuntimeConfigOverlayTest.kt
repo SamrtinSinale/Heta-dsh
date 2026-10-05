@@ -305,6 +305,50 @@ class DshRuntimeConfigOverlayTest {
     }
 
     /**
+     * 把一份**带模式意图**的覆盖层写到 `build/dsh-e2e-overlay-modes.patch.yml`，给端到端
+     * 冒烟的第 ⑩ 步用：那一步拿它去启动真运行时，然后断言 ① 模型收到的 system 里真有
+     * 计划模式那一段（说明 `/plan` 真的被执行了）② 目标模式真的建起了目标，而且自动续轮
+     * 在 ACP 这条路上跑得通（假模型会收到 `<goal_round>`）。
+     *
+     * 只在这一份里出现的东西：`goal` 行的自动续轮上限被压到 1。假模型永远不会宣告目标
+     * 完成，不压上限的话冒烟会一轮接一轮跑到默认的 256 轮。目标原文里故意带引号和冒号：
+     * 拼出来的 YAML 必须仍然能被真 js-yaml 读进去（同一个坑踩过两次）。
+     */
+    @Test
+    fun writesTheModeOverlayForTheEndToEndSmokeTest() {
+        val rootfs = temporaryFolder.newFolder("dsh-runtime-modes")
+        val config = DshRuntimeConfig(
+            rootfsPath = rootfs.absolutePath,
+            providerRoute = "deepseek-official",
+            model = "global:deepseek-v4.1-flash",
+            apiKey = "sk-test",
+            baseUrl = "https://example.invalid",
+            presetPlane = DshPresetPlane.overlay(
+                { path -> asset(path) },
+                DshPresetPlane.DEFAULT_PRESET,
+                listOf(
+                    AgentIdentity.ROLE_LINE,
+                    "",
+                    "Your working directory is {{cwd}}.",
+                    "技能库：HETA-PROBE-SKILLS",
+                ),
+                DshSessionModes(plan = true, goal = E2E_GOAL),
+            ) + E2E_GOAL_ROUND_CAP,
+            presetJoinPlugin = asset(DshPresetPlane.JOIN_ASSET),
+        )
+        val file = java.io.File("build/dsh-e2e-overlay-modes.patch.yml")
+        file.parentFile?.mkdirs()
+        file.writeText(overlayOf(config))
+
+        val overlay = file.readText()
+        assertTrue("模式覆盖层里没有 plan: true：\n$overlay", overlay.contains("plan: true"))
+        // 只找标记串：目标原文里有引号，进 YAML 时被 JSON 转义成 `\"` —— "整句一字不差"
+        // 由 `DshPluginInventoryTest.modeIntentLandsOnTheJoinRowWithoutDisturbingThePlane`
+        // 把 YAML 真解析一遍来钉（那才是 dsh 读到的形态）。
+        assertTrue("模式覆盖层里没有目标标记串：\n$overlay", overlay.contains("HETA-E2E-GOAL"))
+    }
+
+    /**
      * 把**真启动脚本**写到 `build/dsh-startup-script.sh`，给端到端冒烟测试用
      * （`scripts/test-dsh-e2e.sh`）。
      *
@@ -354,5 +398,19 @@ class DshRuntimeConfigOverlayTest {
 
         assertEquals("models 条目数 = 内置目录：\n$overlay", DshBuiltinModelCatalog.IDS.size, models.size)
         assertEquals("内置目录被改动了：\n$overlay", DshBuiltinModelCatalog.IDS, models.map { it["id"] })
+    }
+
+    private companion object {
+        /** 端到端第 ⑩/⑪ 步用的目标原文（两边必须逐字一致：脚本拿它去请求里找）。 */
+        const val E2E_GOAL = "HETA-E2E-GOAL：把 README 的\"用法\"一节补上"
+
+        /** 端到端专用：把目标模式的自动续轮上限压到 1（假模型永远不会宣告完成）。 */
+        val E2E_GOAL_ROUND_CAP = """
+            # 端到端专用：自动续轮上限 1（否则假模型会一直干到默认的 256 轮）。
+            - id: goal
+              config:
+                defaultMaxGoalRounds: 1
+
+        """.trimIndent()
     }
 }

@@ -299,15 +299,135 @@ print(f"   ✓ 人格已刷新（{persona2}）；历史原样带着，没有退�
 PY
 [ $? -eq 0 ] && history_ok=1
 
+echo "⑩ 计划模式 / 目标模式：换一份带模式意图的覆盖层 → 同一个会话再跑一轮"
+# 第 ⑩ 步的覆盖层由单测导出（`DshRuntimeConfigOverlayTest.writesTheModeOverlayForTheEndToEndSmokeTest`）。
+# 两份覆盖层只差 join 那一行的 config：计划模式意图 + 一句目标 + 把自动续轮上限压到 1。
+MODE_OVERLAY="$(find "$REPO" -name dsh-e2e-overlay-modes.patch.yml -print -quit 2>/dev/null)"
+MODE_PROMPT="第三回合：确认计划模式与目标模式都已生效。"
+round3_status=1
+if [ -z "$MODE_OVERLAY" ] || [ ! -f "$MODE_OVERLAY" ]; then
+  echo "   FAIL: 没有模式覆盖层（先跑单测导出：./gradlew :app:testDebugUnitTest）"
+else
+  cp -f "$MODE_OVERLAY" "$ROOT/opt/dsh/heta-run-overlay.patch.yml"
+  # 状态文件先删掉：第 ⑪ 步断言的是**这一轮**写出来的那一份。
+  rm -f "$ROOT/root/.dsh/heta-modes.json"
+  echo "   覆盖层里的模式意图：$(grep -E '^[[:space:]]+(plan|goal):' "$ROOT/opt/dsh/heta-run-overlay.patch.yml" | tr '\n' ' ')"
+  # 凭据文件要重新放一份（上一回合的已被脚本 rm -f 掉）。
+  printf 'export DEEPSEEK_API_KEY=sk-smoke\nexport DEEPSEEK_BASE_URL=http://127.0.0.1:%s\n' "$PORT" > "$CRED"
+  chmod 600 "$CRED"
+  python3 "$REPO/scripts/dsh-e2e-acp.py" "$MARKER" --resume "$SESSION_ID" --prompt "$MODE_PROMPT" -- \
+    unshare -rm bash -c "$INNER" 2>&1 | tee "$TMP/acp3.log"
+  round3_status="${PIPESTATUS[0]}"
+fi
+
+echo "⑪ 模式断言：模型收到的请求里有计划模式那一段（续接的会话按 in-history 投递）；/plan 与 /goal 都是 success"
+mode_ok=0
+MODE_STATUS="$ROOT/root/.dsh/heta-modes.json"
+python3 - "$MOCK_DUMP" "$ROUND2_PROMPT" "$MODE_STATUS" "$MODE_PROMPT" <<'PY'
+import json
+import sys
+
+dump, round2_prompt, status_path, mode_prompt = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+requests = []
+with open(dump, encoding="utf-8") as handle:
+    for line in handle:
+        line = line.strip()
+        if line:
+            requests.append(json.loads(line)["body"])
+
+
+def system_text(body):
+    system = body.get("system")
+    if isinstance(system, list):
+        return " ".join(str(block.get("text") or "") for block in system if isinstance(block, dict))
+    return str(system or "")
+
+
+def blob(body):
+    return json.dumps(body, ensure_ascii=False)
+
+
+def plan_location(body):
+    """计划模式那一段出现在哪：system 字段，还是历史消息（续接的 in-history 增量）。"""
+    if plan_marker in system_text(body):
+        return "system"
+    if plan_marker in blob(body):
+        return "messages"
+    return ""
+
+
+plan_marker = "You are in plan mode"
+round_marker = "<goal_round>"
+plan_hits = [index + 1 for index, body in enumerate(requests) if plan_location(body)]
+round_hits = [index + 1 for index, body in enumerate(requests) if round_marker in blob(body)]
+# "第二回合的请求" = 还没出现第三回合提示语的那些：续接的请求里本来就带着第二回合的
+# 用户原文（历史），拿它判会把自己也判进去。
+round3_start = next(
+    (index for index, body in enumerate(requests) if mode_prompt in blob(body)),
+    len(requests),
+)
+stale = [index + 1 for index, body in enumerate(requests[:round3_start]) if plan_location(body)]
+
+try:
+    with open(status_path, encoding="utf-8") as handle:
+        status = json.load(handle)
+except OSError as error:
+    status = None
+    print(f"   状态文件读不到（{status_path}）：{error}")
+
+lines = [] if status is None else (status.get("lines") or [])
+plan_line = next((entry for entry in lines if entry.get("line") == "/plan"), None)
+goal_line = next((entry for entry in lines if str(entry.get("line", "")).startswith("/goal ")), None)
+
+print(f"   请求总数 {len(requests)}；带计划模式段的有 {plan_hits}")
+print(f"   自动续轮（<goal_round>）出现在请求 {round_hits or '（没有）'}"
+      " —— dsh 在 resume 之后会把目标重新置为 disarmed，这是官方形态，不算失败")
+print(f"   状态文件：plan={plan_line} goal={'（有）' if goal_line else '（没有）'}")
+
+problems = []
+if not plan_hits:
+    problems.append(
+        "模型收到的请求里没有「You are in plan mode」—— /plan 没真的执行"
+        "（ACP 没有命令通道，得靠 join 那一跳按 agent 去预设的隔离域里取 planMode 再补 commands.execute）"
+    )
+if stale:
+    problems.append(f"计划模式那一段出现在第二回合的请求 {stale} 里 —— 断言失去意义")
+if status is None:
+    problems.append(f"join 插件没写出状态文件 {status_path}（那一跳根本没跑？）")
+else:
+    if plan_line is None:
+        problems.append("状态文件里没有 /plan 这一条 —— 计划模式的意图没被执行")
+    elif plan_line.get("kind") != "success":
+        problems.append(f"/plan 执行结果不是 success：{plan_line}")
+    elif not plan_line.get("hit"):
+        problems.append(f"/plan 没有命中命令（这份预设没注册它）：{plan_line}")
+    if goal_line is None:
+        problems.append("状态文件里没有 /goal 这一条 —— 目标模式的意图没被执行")
+    elif goal_line.get("kind") != "success":
+        problems.append(f"/goal 执行结果不是 success：{goal_line}")
+    elif "Goal created" not in str(goal_line.get("text") or ""):
+        problems.append(f"dsh 回的文本里没有 Goal created（目标没真建起来）：{goal_line}")
+
+if problems:
+    for problem in problems:
+        print(f"   ✗ {problem}")
+    sys.exit(1)
+location = plan_location(requests[plan_hits[0] - 1])
+print(f"   ✓ 计划模式进了模型的请求 {plan_hits}（位置：{location}）；"
+      "/plan 与 /goal 都被 dsh 回了 success")
+PY
+[ $? -eq 0 ] && mode_ok=1
+
 echo
 if [ "$acp_status" -eq 0 ] && [ "$round2_status" -eq 0 ] && [ "$file_ok" -eq 1 ] \
-   && [ "$cred_ok" -eq 1 ] && [ "$history_ok" -eq 1 ]; then
-  echo "====> 端到端通过：工具真执行、回合正常收尾、续接后人格已刷新且历史原样"
+   && [ "$cred_ok" -eq 1 ] && [ "$history_ok" -eq 1 ] && [ "$round3_status" -eq 0 ] \
+   && [ "$mode_ok" -eq 1 ]; then
+  echo "====> 端到端通过：工具真执行、回合正常收尾、续接后人格已刷新且历史原样、计划与目标模式都真的生效"
   exit 0
 fi
-echo "====> 端到端失败（首回合=$acp_status 续接=$round2_status 文件=$file_ok 凭据=$cred_ok 续接语义=$history_ok）"
-if [ "$round2_status" != 0 ]; then
-  echo "--- 第二回合日志尾部 ---"; tail -20 "$TMP/acp2.log" 2>/dev/null
+echo "====> 端到端失败（首回合=$acp_status 续接=$round2_status 文件=$file_ok 凭据=$cred_ok 续接语义=$history_ok 模式回合=$round3_status 模式=$mode_ok）"
+if [ "$round3_status" != 0 ]; then
+  echo "--- 模式回合日志尾部 ---"; tail -30 "$TMP/acp3.log" 2>/dev/null
 fi
 echo "--- 假模型日志 ---"; tail -20 "$TMP/mock.log"
 exit 1

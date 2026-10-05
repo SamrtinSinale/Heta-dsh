@@ -662,6 +662,8 @@ internal class DshAcpRuntime(
                 model = modelConfig.model,
                 apiKey = modelConfig.apiKey,
                 baseUrl = modelConfig.baseUrl,
+                // 计划 / 目标模式按会话分账，钥匙就是这里查 dsh 会话用的那一把。
+                sessionKey = request.effectiveModelSessionId,
             ) ?: return null
             return DshAcpRuntime(
                 config = resolved,

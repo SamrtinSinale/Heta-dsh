@@ -440,6 +440,8 @@ internal data class DshRuntimeConfig(
             model: String,
             apiKey: String,
             baseUrl: String,
+            /** 会话钥匙（`RunRequest.effectiveModelSessionId`）：计划 / 目标模式按它分账。 */
+            sessionKey: String = "",
         ): DshRuntimeConfig? {
             if (!DshRuntimeInstaller.isReady(context)) return null
             runCatching { SkillRuntime.skillsRoot(context).mkdirs() }
@@ -463,6 +465,9 @@ internal data class DshRuntimeConfig(
                     context,
                     DshPresetPlane.selectedFor(context),
                     base.personaSuffixLines(),
+                    // 这个会话要不要计划模式 / 目标模式：由 join 那一跳在预设挂好后补上
+                    // 那次 `commands.execute()`（ACP 没有命令通道，见 DshSessionModes）。
+                    DshSessionModeStore.read(context, sessionKey),
                 ),
                 presetJoinPlugin = DshPresetPlane.joinPluginFor(context),
             )

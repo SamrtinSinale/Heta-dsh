@@ -47,10 +47,14 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.BoundedRootCommandExecutor
 import io.github.mangi.eta.agent.device.DeviceLocationProvider
 import io.github.mangi.eta.agent.device.RootAccess
+import io.github.mangi.eta.agent.dsh.DshSlashCommand
+import io.github.mangi.eta.agent.dsh.DshSlashCommands
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.AppearanceSettingsScreen
 import io.github.mangi.eta.ui.SettingsScreen
+import io.github.mangi.eta.ui.components.DshPresetChooser
+import io.github.mangi.eta.ui.components.EtaTextButton
 import io.github.mangi.eta.ui.components.MiuixDialogActions
 import io.github.mangi.eta.ui.model.AgentHomeAction
 import io.github.mangi.eta.ui.model.AgentMemoryAction
@@ -145,6 +149,7 @@ fun AgentAppRoot(
     }
 
     var conversationPaneOpen by remember { mutableStateOf(false) }
+    var presetPickerOpen by remember { mutableStateOf(false) }
     var conversationRenameTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationDeleteTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationExportTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
@@ -182,6 +187,64 @@ fun AgentAppRoot(
         }
     }
     val focusManager = LocalFocusManager.current
+
+    /**
+     * 提交输入框里的一段文本：斜杠命令在这里被**截住**，不会原样发给模型。
+     *
+     * 为什么在这一层：命令的执行动作（改模式意图）与提示（Toast）都是界面的事，
+     * 解析本身是纯逻辑（[DshSlashCommands]，有单测）。除了命令本身，命令**后面**的正文
+     * 照样当这一轮的用户消息发出去 —— 与 dsh 的 `/plan <文本>`（steer）语义一致。
+     */
+    fun submitChatText(text: String) {
+        val invocation = DshSlashCommands.parse(text)
+        if (invocation == null) {
+            agentState.sendCurrentMessage(text)
+            return
+        }
+        when (val command = invocation.command) {
+            is DshSlashCommand.Plan -> {
+                agentState.selectPlanMode(command.enabled)
+                Toast.makeText(
+                    context,
+                    resources.getString(
+                        if (command.enabled) R.string.chat_mode_plan_on else R.string.chat_mode_plan_off,
+                    ),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+
+            is DshSlashCommand.Goal -> {
+                agentState.selectGoal(command.objective.orEmpty())
+                Toast.makeText(
+                    context,
+                    resources.getString(
+                        if (command.objective.isNullOrBlank()) {
+                            R.string.chat_mode_goal_cleared
+                        } else {
+                            R.string.chat_mode_goal_saved
+                        },
+                    ),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+
+            DshSlashCommand.ShowGoal -> {
+                val objective = agentState.sessionModes.goal
+                Toast.makeText(
+                    context,
+                    if (objective.isNullOrBlank()) {
+                        resources.getString(R.string.chat_command_goal_none)
+                    } else {
+                        resources.getString(R.string.chat_command_goal_current, objective)
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+        if (invocation.rest.isNotBlank()) {
+            agentState.sendCurrentMessage(invocation.rest)
+        }
+    }
 
     LaunchedEffect(Unit) {
         RuntimeConfigRepository.ensureDefaults(EtaApp.serviceInstance)
@@ -264,6 +327,10 @@ fun AgentAppRoot(
             onOpenPermissions = { pushRoute(AppRoute.Permissions) },
             onOpenSettings = { pushRoute(AppRoute.Settings) },
             onOpenModelProviders = { pushRoute(AppRoute.ModelProviders) },
+            onOpenPresets = {
+                conversationPaneOpen = false
+                presetPickerOpen = true
+            },
         ) { padding ->
             Box(
                 modifier = Modifier
@@ -296,6 +363,37 @@ fun AgentAppRoot(
                     AgentHomeScreen(
                         state = agentState.homeState,
                         modelPickerState = agentState.modelPickerState,
+                        sessionModes = agentState.sessionModes,
+                        onPlanModeChange = { enabled ->
+                            agentState.selectPlanMode(enabled)
+                            // 生效时机是下一条消息（覆盖层每轮重建），所以明说一句 ——
+                            // 否则"点了没动静"看起来就像没生效。
+                            Toast.makeText(
+                                context,
+                                resources.getString(
+                                    if (enabled) {
+                                        R.string.chat_mode_plan_on
+                                    } else {
+                                        R.string.chat_mode_plan_off
+                                    },
+                                ),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                        onGoalChange = { objective ->
+                            agentState.selectGoal(objective)
+                            Toast.makeText(
+                                context,
+                                resources.getString(
+                                    if (objective.isBlank()) {
+                                        R.string.chat_mode_goal_cleared
+                                    } else {
+                                        R.string.chat_mode_goal_saved
+                                    },
+                                ),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
                         conversationKey = agentState.conversationPaneState.selectedConversationId,
                         onAction = { action ->
                             when (action) {
@@ -303,7 +401,10 @@ fun AgentAppRoot(
                                     agentState.updateReasoningEffort(action.effort)
                                 AgentHomeAction.CompactContext -> agentState.compactCurrentContext()
                                 is AgentHomeAction.ModelSelected -> agentState.selectModel(action.modelId)
-                                is AgentHomeAction.SubmitMessage -> { requestExecutionNotifications(); agentState.sendCurrentMessage(action.text) }
+                                is AgentHomeAction.SubmitMessage -> {
+                                    requestExecutionNotifications()
+                                    submitChatText(action.text)
+                                }
                                 AgentHomeAction.StopRun -> agentState.stopCurrentRun()
                                 is AgentHomeAction.ImageAttached -> agentState.attachImage(action.uri)
                                 is AgentHomeAction.RemoveImage -> agentState.removePendingImage(action.id)
@@ -796,6 +897,28 @@ fun AgentAppRoot(
                     messageRegenerateTarget = null
                 },
             )
+        }
+    }
+
+    if (presetPickerOpen) {
+        WindowDialog(
+            show = true,
+            cornerRadius = DialogDefaults.CornerRadius,
+            title = stringResource(R.string.chat_preset_picker_title),
+            summary = stringResource(R.string.chat_preset_picker_summary),
+            onDismissRequest = { presetPickerOpen = false },
+        ) {
+            Column {
+                DshPresetChooser(
+                    selectedId = agentState.selectedPresetId,
+                    onSelected = { agentState.selectPreset(it) },
+                )
+                EtaTextButton(
+                    text = stringResource(R.string.action_confirm),
+                    onClick = { presetPickerOpen = false },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+            }
         }
     }
 }

@@ -20,6 +20,7 @@ import io.github.mangi.eta.agent.dsh.DshProfileStore
 import io.github.mangi.eta.agent.dsh.DshProfileWrite
 import io.github.mangi.eta.agent.dsh.DshRowState
 import io.github.mangi.eta.agent.dsh.DshRuntimeInstaller
+import io.github.mangi.eta.ui.app.DshPresetUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -128,9 +129,11 @@ internal class DshExtensionsStore(
      * 它是**下一轮 run** 会用的那个：覆盖层每轮重新生成，`config.default` 就取这个值。活清单
      * 里的 `isDefault` 要等下一轮 run 才会跟着变，所以页面的"新任务默认"标记看的是这里，不是
      * 对方报的那个 —— 否则用户刚点完会看到"没生效"。
+     *
+     * **直接读进程内那一份**（[DshPresetUi]），这一页不再自存一个副本：聊天页顶栏也能切
+     * 预设，各存一份就会出现"在那边切了、这边还写着旧名字"。
      */
-    var selectedPresetId by mutableStateOf(DshPresetPlane.DEFAULT_PRESET)
-        private set
+    val selectedPresetId: String get() = DshPresetUi.current(appContext)
 
     /** 结果提示；写入被拒绝时它就是数据层给的理由原文。 */
     var message by mutableStateOf<String?>(null)
@@ -139,8 +142,7 @@ internal class DshExtensionsStore(
         private set
 
     init {
-        // 偏好读失败不该拦着读清单：选不中就用官方默认值。
-        selectedPresetId = DshPresetPlane.selectedFor(appContext)
+        // 偏好读失败不该拦着读清单：选不中就用官方默认值（[DshPresetUi] 里那一次读会兜）。
         load(explicit = false)
     }
 
@@ -362,7 +364,9 @@ internal class DshExtensionsStore(
                 fail(R.string.extensions_write_failed, IllegalStateException("预设选择没写进偏好"))
                 return@launch
             }
-            selectedPresetId = id
+            // 发布到进程内那一份：聊天页顶栏也跟着变（一个值两个入口）。这一步在主线程上
+            // （上面那次 withContext(IO) 已经回来了）。
+            DshPresetUi.publish(id)
             // 预设切换**下一条消息就生效**（真机实测），而插件开关要等下一次开对话 —— 两者不能
             // 共用一句"已保存，下次开对话生效"：真机反馈"切换模式后还是提示已保存下次开对话生效，
             // 和预设下面那句冲突了"。

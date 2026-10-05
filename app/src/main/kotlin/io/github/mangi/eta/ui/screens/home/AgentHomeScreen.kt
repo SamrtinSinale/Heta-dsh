@@ -5,6 +5,7 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import io.github.mangi.eta.ui.components.AgentChatBody
 import io.github.mangi.eta.ui.components.chatConversationCompositionKey
+import io.github.mangi.eta.agent.dsh.DshSessionModes
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.AgentHomeAction
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
@@ -19,6 +20,9 @@ import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 internal fun AgentHomeScreen(
     state: AgentChatHomeUiState,
     modelPickerState: AgentModelPickerUiState,
+    sessionModes: DshSessionModes,
+    onPlanModeChange: (Boolean) -> Unit,
+    onGoalChange: (String) -> Unit,
     conversationKey: String?,
     onAction: (AgentHomeAction) -> Unit,
     isDrawerOpen: Boolean = false,
@@ -38,6 +42,9 @@ internal fun AgentHomeScreen(
             messageEdit = state.messageEdit,
             characterName = state.roleplay?.characterName,
             onReasoningEffortChange = { onAction(AgentHomeAction.ReasoningEffortChanged(it)) },
+            sessionModes = sessionModes,
+            onPlanModeChange = onPlanModeChange,
+            onGoalChange = onGoalChange,
             onCompactContext = { onAction(AgentHomeAction.CompactContext) },
             canCompactContext = state.canCompactContext,
             onModelSelected = { onAction(AgentHomeAction.ModelSelected(it)) },

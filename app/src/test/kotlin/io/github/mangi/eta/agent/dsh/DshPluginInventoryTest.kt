@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
+import org.yaml.snakeyaml.Yaml
 import org.junit.rules.TemporaryFolder
 
 /**
@@ -435,7 +436,73 @@ class DshPluginInventoryTest {
     }
 
     /**
-     * 读一份 APK 资产。
+     * 计划 / 目标模式是**预设里的行**提供的：`/plan` 由 planning 组里的 `dsh-plan-mode` 注册，
+     * `/goal` 由 `dsh-command-goal` 注册（两个都是会话级的斜杠命令，ACP 没有命令通道，所以
+     * Heta 侧靠 `DshPresetPlane.withModes` + join 插件补那一次 execute）。
+     *
+     * [DshPresetPlane.MODE_PRESET_IDS] 决定界面上给不给那个入口：名单错了就是"点了没反应"
+     * （或者反过来：极简模式下摆一个永远不生效的按钮）。所以它必须与四份资产逐份对齐 ——
+     * 上游换预设内容时在这里红，而不是在真机上。
+     */
+    @Test
+    fun modePresetIdsMatchTheAssetsThatRegisterPlanAndGoal() {
+        DshPresetPlane.PRESET_IDS.forEach { id ->
+            val declaration = asset("heta-presets/$id.patch.yml")
+            val expected = DshPresetPlane.MODE_PRESET_IDS.contains(id)
+            assertEquals(
+                "$id：dsh-plan-mode 的有无与 MODE_PRESET_IDS 不一致",
+                expected,
+                declaration.contains("'@deepseek-ai/dsh-plan-mode'"),
+            )
+            assertEquals(
+                "$id：dsh-command-goal 的有无与 MODE_PRESET_IDS 不一致",
+                expected,
+                declaration.contains("'@deepseek-ai/dsh-command-goal'"),
+            )
+        }
+    }
+
+    /**
+     * 模式意图注入到 join 那一行的 `config` 上，而且要**真能被 YAML 解析**。
+     *
+     * 这里必须真解析一遍：目标是一句用户自己写的话（引号、冒号、换行都可能出现），而这段
+     * 文本是拼出来的 —— 引号少一个就是整份覆盖层 YAMLException，dsh 在 `initialize` 之前
+     * 就退出，Heta 侧只看到 `protocol-eof`（同一个坑踩过两次：模型目录那段、预设 persona 段）。
+     */
+    @Test
+    fun modeIntentLandsOnTheJoinRowWithoutDisturbingThePlane() {
+        val read: (String) -> String = { path -> asset(path) }
+        val plane = read("heta-presets/plane.patch.yml")
+        // 没碰过 = 一个字节都不变：普通会话的覆盖层与以前完全一致。
+        assertEquals(plane, DshPresetPlane.withModes(plane, DshSessionModes()))
+
+        val goal = "把 README 补上\"用法\"一节，然后跑一遍测试\n第二行也要在"
+        val injected = DshPresetPlane.withModes(
+            plane,
+            DshSessionModes(plan = true, goal = goal),
+        )
+        val parsed = Yaml().load<Any>(injected)
+        assertTrue("平面没解析成列表：\n$injected", parsed is List<*>)
+        // 平面里有好几个 `- insert:` 组（Host 行一组、join 一组、cordis inspect 一组），
+        // join 那一行在第二个组里 —— 摊平所有组再找。
+        val insert = (parsed as List<*>).filterIsInstance<Map<*, *>>()
+            .flatMap { entry -> (entry["insert"] as? List<*>) ?: emptyList<Any?>() }
+            .filterIsInstance<Map<*, *>>()
+        val join = insert.first { it["id"] == "heta-preset-join" }
+        val config = join["config"] as Map<*, *>
+        assertEquals("plan 没写成布尔：\n$injected", true, config["plan"])
+        assertEquals("goal 没原样带上（引号 / 换行没转义对）：\n$injected", goal, config["goal"])
+
+        // 行清单不变：注入 config 不该多出 / 少掉任何一行（那是页面与注册表的输入）。
+        assertEquals(
+            DshPresetPlane.planeRows(read, "standard").map { it.patchId },
+            DshPresetPlane.planeRows(read, "standard", DshSessionModes(plan = false, goal = ""))
+                .map { it.patchId },
+        )
+    }
+
+    /**
+     * 两种跑法的 cwd 不一样：Gradle 单测的工作目录是模块目录 `app/`，本地 kotlinc harness
      *
      * 两种跑法的 cwd 不一样：Gradle 单测的工作目录是模块目录 `app/`，本地 kotlinc harness
      * （`scripts/test-local-dsh.sh`）把工作目录钉在仓库根。两个都认，测试才在两处都跑得起来。

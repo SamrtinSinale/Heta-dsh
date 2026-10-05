@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.ui.app.CharacterLibraryStore
 import io.github.mangi.eta.ui.components.EtaArrowPreference
@@ -73,6 +74,10 @@ internal fun CharacterLibraryScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = CharacterCardPadding, vertical = 4.dp),
+                // miuix 的 SearchBar 默认自带 12.dp 的水平 insideMargin（SearchBarDefaults），
+                // 叠在卡片那 16.dp 上就是左右各 28.dp —— 比下面的角色卡明显窄一圈。
+                // 归零之后与卡片左右对齐（扩展页、会话侧栏同一口径）。
+                insideMargin = DpSize.Zero,
                 expanded = false,
                 onExpandedChange = {},
                 inputField = {

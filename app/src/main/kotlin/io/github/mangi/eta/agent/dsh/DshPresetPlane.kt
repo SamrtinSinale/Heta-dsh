@@ -2,6 +2,7 @@ package io.github.mangi.eta.agent.dsh
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONObject
 
 /**
  * 官方 agent 预设要跑起来，Heta 必须补的那几段补丁层内容。
@@ -40,6 +41,16 @@ internal object DshPresetPlane {
     /** 创造模式：官方四份声明里的 `cordis`（id 就是它，客户端文案叫「创造模式」）。 */
     const val CREATOR_PRESET = "cordis"
 
+    /**
+     * 哪几份官方预设提供计划模式（`/plan` + `exit_plan_mode`）与目标模式（`/goal`）。
+     *
+     * 事实来源是四份声明本身（standard / ptc / cordis 里都有 `command-goal`、`tool-goal`
+     * 和 planning 组里的 `plan-mode`；minimal 只有 persona + 持久 shell，刻意什么都没有）。
+     * 界面上不该给一个点了没反应的入口，所以这份名单要与资产一致 —— 有单测钉着
+     *（[DshPluginInventoryTest]：名单里的必须有那几行，名单外的必须没有）。
+     */
+    val MODE_PRESET_IDS = setOf("standard", "ptc", "cordis")
+
     /** join 插件：官方把"会话 → 预设"放在 Web 浏览器半边，ACP 这条路上只能我们自己补。 */
     const val JOIN_ASSET = "heta-preset-join.mjs"
 
@@ -66,8 +77,9 @@ internal object DshPresetPlane {
         read: (String) -> String,
         selected: String,
         suffixLines: List<String> = emptyList(),
+        modes: DshSessionModes = DshSessionModes(),
     ): String = buildString {
-        append(read(asset("plane.patch.yml")))
+        append(withModes(read(asset("plane.patch.yml")), modes))
         append('\n')
         append(registryRow(selected))
         PRESET_IDS.forEach { id ->
@@ -149,8 +161,45 @@ internal object DshPresetPlane {
      *
      * 解析失败返回空列表（页面照旧能用，只是少这几行）——不抛异常给界面。
      */
-    fun planeRows(read: (String) -> String, selected: String): List<DshPatchRow> =
-        runCatching { DshPatchDocument.parse(overlay(read, selected)).rows }.getOrDefault(emptyList())
+    fun planeRows(
+        read: (String) -> String,
+        selected: String,
+        modes: DshSessionModes = DshSessionModes(),
+    ): List<DshPatchRow> =
+        runCatching { DshPatchDocument.parse(overlay(read, selected, modes = modes)).rows }
+            .getOrDefault(emptyList())
+
+    /**
+     * 把会话的模式意图写进 join 那一行的 config。
+     *
+     * 为什么挂在这一行上：模式在 dsh 里是**斜杠命令**的状态（`/plan`、`/goal`），而 ACP 没有
+     * 命令通道 —— 只能由 Host 侧补那一次 `commands.execute()`。放这一行是因为它已经负责
+     * "每个会话开一次"这件事，而且必须在**预设挂好之后**才执行（`/plan` / `/goal` 是预设里的
+     * 行注册的）。
+     *
+     * [DshSessionModes.untouched] 时原样返回：普通会话的覆盖层一个字节都不变（单测与端到端
+     * 都对着它断言）。
+     */
+    fun withModes(plane: String, modes: DshSessionModes): String {
+        if (modes.untouched) return plane
+        val match = JOIN_ROW_NAME_LINE.find(plane) ?: run {
+            Log.w(TAG, "平面里找不到 join 那一行，这一轮的计划/目标模式不会生效")
+            return plane
+        }
+        val indent = match.groupValues[1]
+        val config = buildString {
+            append('\n').append(indent).append("config:")
+            modes.plan?.let { append('\n').append(indent).append("  plan: ").append(it) }
+            modes.goal?.let { append('\n').append(indent).append("  goal: ").append(quote(it)) }
+        }
+        return plane.replaceRange(match.range, match.value + config)
+    }
+
+    /** join 那一行的 `name:` 整行（缩进要留着：config 必须与它同层）。 */
+    private val JOIN_ROW_NAME_LINE = Regex("(?m)^(\\s*)name: \\./heta-preset-join\\.mjs\\s*$")
+
+    /** YAML 里安全的双引号字符串：目标是一句用户自己写的话，换行、引号、反斜杠都可能出现。 */
+    private fun quote(value: String): String = JSONObject.quote(value)
 
     /** join 插件的全文（写进 runtime root，覆盖层里用相对名 `./heta-preset-join.mjs` 引用它）。 */
     fun joinPlugin(read: (String) -> String): String = read(JOIN_ASSET)
@@ -184,8 +233,9 @@ internal object DshPresetPlane {
         context: Context,
         selected: String,
         suffixLines: List<String> = emptyList(),
+        modes: DshSessionModes = DshSessionModes(),
     ): String =
-        runCatching { overlay(reader(context), selected, suffixLines) }.getOrElse { throwable ->
+        runCatching { overlay(reader(context), selected, suffixLines, modes) }.getOrElse { throwable ->
             Log.w(TAG, "preset plane 读不出来，这一轮不启用预设", throwable)
             ""
         }

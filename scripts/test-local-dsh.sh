@@ -58,9 +58,14 @@ FILES=(
   # 预设平面：把它拉进来，才能对"真覆盖层文本"跑文件视图解析（真机那个 bug 的复现）。
   "$B/DshPresetPlane.kt"
   "$B/DshPresetSelection.kt"
+  # 模式意图（计划 / 目标）：DshPresetPlane 现在依赖它。
+  "$B/DshSessionMode.kt"
+  # 斜杠命令的解析表（纯逻辑，界面那一层靠它决定一行到底进不进模型）。
+  "$B/DshSlashCommand.kt"
   "$T/DshPatchDocumentTest.kt"
   "$T/DshProfileStoreTest.kt"
   "$T/DshPluginInventoryTest.kt"
+  "$T/DshSlashCommandTest.kt"
 )
 
 echo "本地编译：${#FILES[@]} 个文件"
@@ -77,7 +82,8 @@ java -cp "$OUT/classes:$JSONJAR:$JUNIT:$HAMCREST:$SNAKEYAML:$KOTLIN_LIB/kotlin-s
   org.junit.runner.JUnitCore \
   io.github.mangi.eta.agent.dsh.DshPatchDocumentTest \
   io.github.mangi.eta.agent.dsh.DshPluginInventoryTest \
-  io.github.mangi.eta.agent.dsh.DshProfileStoreTest
+  io.github.mangi.eta.agent.dsh.DshProfileStoreTest \
+  io.github.mangi.eta.agent.dsh.DshSlashCommandTest
 code=$?
 echo "单测 exit=$code（总计 $(( $(date +%s) - start )) 秒）"
 exit "$code"

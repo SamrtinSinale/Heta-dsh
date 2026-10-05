@@ -68,12 +68,15 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.dsh.DshSessionModes
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
@@ -121,6 +124,9 @@ internal fun AgentChatInputBar(
     onCompactContext: () -> Unit,
     canCompactContext: Boolean,
     onModelSelected: (String) -> Unit,
+    sessionModes: DshSessionModes,
+    onPlanModeChange: (Boolean) -> Unit,
+    onGoalChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
     onStop: () -> Unit,
     onAttachImage: (String) -> Unit,
@@ -147,6 +153,24 @@ internal fun AgentChatInputBar(
     val canSend = textFieldState.text.isNotBlank() ||
         pendingImages.isNotEmpty() ||
         pendingFileReferences.isNotEmpty()
+    val commandButtonLabel = stringResource(R.string.chat_command_button)
+    // 命令菜单：点左下角那个 `/` 打开；在输入框里敲 `/…`（还没有空格）时自动打开。
+    // insertedCommand 记住刚插进去的那一条，免得插完立刻又弹出来。
+    var commandMenuOpen by remember { mutableStateOf(false) }
+    var insertedCommand by remember { mutableStateOf<String?>(null) }
+    val commandQuery = textFieldState.text.toString().let { typed ->
+        typed.takeIf { it.startsWith("/") && typed.none { character -> character.isWhitespace() } }
+    }
+    val showCommandMenu = (commandMenuOpen || commandQuery != null) &&
+        commandQuery != insertedCommand
+    val insertCommand: (String) -> Unit = { line ->
+        // 与官方客户端一样：命令是**写进输入框**的，不是点一下就生效的按钮。
+        textFieldState.setTextAndPlaceCursorAtEnd(line)
+        insertedCommand = line
+        commandMenuOpen = false
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
     val density = LocalDensity.current
     val statusBarTopPx = WindowInsets.statusBars.getTop(density)
     var inputContainerTopPx by remember { mutableIntStateOf(0) }
@@ -220,6 +244,20 @@ internal fun AgentChatInputBar(
                 style = MiuixTheme.textStyles.body2,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(start = 8.dp, bottom = 6.dp),
+            )
+        }
+
+        // 模式小条只在真的开着时出现（平时不占位、不挤排版）；命令菜单在它下面。
+        DshModeTags(
+            modes = sessionModes,
+            onPlanModeChange = onPlanModeChange,
+            onGoalChange = onGoalChange,
+        )
+
+        if (showCommandMenu) {
+            DshChatCommandMenu(
+                query = commandQuery,
+                onPick = insertCommand,
             )
         }
 
@@ -303,6 +341,28 @@ internal fun AgentChatInputBar(
                                 )
                             }
                         } else {
+                            // 斜杠命令入口（输入框左下角）。有模式开着时高亮：状态一眼可见。
+                            IconButton(
+                                onClick = { commandMenuOpen = !commandMenuOpen },
+                                minWidth = ChatInputActionSize,
+                                minHeight = ChatInputActionSize,
+                                modifier = Modifier.semantics {
+                                    contentDescription = commandButtonLabel
+                                },
+                            ) {
+                                Text(
+                                    text = "/",
+                                    style = MiuixTheme.textStyles.subtitle,
+                                    color = if (sessionModes.anyActive) {
+                                        MiuixTheme.colorScheme.primary
+                                    } else {
+                                        MiuixTheme.colorScheme.onSurface
+                                    },
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(2.dp))
+
                             AgentAttachmentPickerButton(
                                 popupAnchorTopPx = inputContainerTopPx,
                                 popupMaxHeight = thinkingPopupMaxHeight,

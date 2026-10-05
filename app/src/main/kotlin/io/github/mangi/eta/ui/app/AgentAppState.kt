@@ -21,6 +21,10 @@ import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
 import io.github.mangi.eta.agent.device.AgentFileReferenceGateway
 import io.github.mangi.eta.agent.device.DeviceLocationProvider
 import io.github.mangi.eta.agent.device.RootAccess
+import io.github.mangi.eta.agent.dsh.DshPresetPlane
+import io.github.mangi.eta.agent.dsh.DshPresetSelection
+import io.github.mangi.eta.agent.dsh.DshSessionModeStore
+import io.github.mangi.eta.agent.dsh.DshSessionModes
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.memory.AgentMemoryContextBuilder
 import io.github.mangi.eta.agent.model.AgentFileReference
@@ -140,6 +144,28 @@ internal class AgentAppState(
     var modelPickerState by mutableStateOf(AgentModelPickerUiState())
         private set
 
+    /**
+     * 当前选中的 agent 预设（官方那四份之一）。
+     *
+     * 为什么是 App 级而不是对话级：预设绑在**会话**上（join 插件在 agent 创建时挂载），
+     * 而承载选择的覆盖层每轮 run 都重新生成 —— 也就是"下一轮 run 用哪个预设"，换个对话
+     * 不会变。聊天页顶栏那个切换器与扩展页里选的是同一个值（[DshPresetUi]）。
+     */
+    val selectedPresetId: String get() = DshPresetUi.current(appContext)
+
+    /**
+     * 当前对话的协作模式意图（计划 / 目标）。
+     *
+     * 跟着对话走：dsh 那边这两样都是**会话内的日志状态**，换一个对话就该是干净的一份。
+     * `null` 的含义是"这个对话里从没碰过"，不是"关着"（见 [DshSessionModes]）。
+     */
+    var sessionModes by mutableStateOf(DshSessionModes())
+        private set
+
+    /** 当前预设是否提供计划 / 目标模式（极简模式刻意两者都没有，那种预设下不画入口）。 */
+    val sessionModesAvailable: Boolean
+        get() = selectedPresetId in DshPresetPlane.MODE_PRESET_IDS
+
     var conversationPaneState by mutableStateOf(
         ConversationPaneUiState(
             conversations = emptyList(),
@@ -163,6 +189,7 @@ internal class AgentAppState(
 
     init {
         refreshConversationSummaries()
+        refreshSessionModes()
         observeRuntimeSelection()
         scope.launch {
             RootAccess.state.collectLatest { refreshPermissionHealth() }
@@ -222,6 +249,68 @@ internal class AgentAppState(
             reasoningEffort = normalized,
             availableReasoningEfforts = currentReasoningCapabilities?.selectableEfforts.orEmpty(),
         )
+    }
+
+    /**
+     * 切一个预设：写偏好（下一轮 run 的覆盖层就会取到它）+ 发布到进程内那份可观察值
+     * （聊天页顶栏与扩展页同时跟上）。
+     *
+     * 写失败就什么都不做：界面不该显示一个没落地的值。同 id 直接返回 —— 与扩展页
+     * 一样的"没变就不写"。
+     */
+    fun selectPreset(presetId: String) {
+        if (presetId == selectedPresetId) return
+        scope.launch {
+            val written = withContext(Dispatchers.IO) {
+                DshPresetSelection.select(appContext, presetId)
+            }
+            if (written) DshPresetUi.publish(presetId)
+        }
+    }
+
+    /** 记下计划模式的意图。界面立刻跟手，真正落到 dsh 上是下一条消息（覆盖层每轮重建）。 */
+    fun selectPlanMode(enabled: Boolean) {
+        if (sessionModes.plan == enabled) return
+        sessionModes = sessionModes.copy(plan = enabled)
+        persistSessionModes()
+    }
+
+    /** 记下目标：空串 = 清除。语义同 [selectPlanMode]。 */
+    fun selectGoal(objective: String) {
+        val normalized = objective.trim()
+        if (sessionModes.goal == normalized) return
+        sessionModes = sessionModes.copy(goal = normalized)
+        persistSessionModes()
+    }
+
+    /**
+     * 把当前模式意图落盘（按会话 id 分账）。
+     *
+     * 还没有对话 id 时（第一次发消息之前）什么都不写：那时还没有会话，写了也没人去读 ——
+     * 意图先留在内存里，等 id 落地时随 [AgentAppState.sendCurrentMessage] 那条路径补上。
+     */
+    private fun persistSessionModes(
+        sessionKey: String = selectedConversationId.orEmpty(),
+        synchronous: Boolean = false,
+    ) {
+        if (sessionKey.isBlank()) return
+        val snapshot = sessionModes
+        val write = {
+            snapshot.plan?.let { DshSessionModeStore.writePlan(appContext, sessionKey, it) }
+            snapshot.goal?.let { DshSessionModeStore.writeGoal(appContext, sessionKey, it) }
+        }
+        if (synchronous) {
+            // 第一次发消息那条路径：这一轮 run 马上就会去读它（覆盖层在服务进程里生成），
+            // 异步写会和它抢。就一次、几毫秒的 commit，钉死在这里。
+            runCatching { write() }
+            return
+        }
+        scope.launch { withContext(Dispatchers.IO) { write() } }
+    }
+
+    /** 换对话 / 新建对话时把那一份意图读回来。 */
+    private fun refreshSessionModes() {
+        sessionModes = DshSessionModeStore.read(appContext, selectedConversationId.orEmpty())
     }
 
     fun refreshRuntimeResults() {
@@ -412,6 +501,7 @@ internal class AgentAppState(
         }
         withContext(Dispatchers.Main.immediate) {
             selectedConversationId = snapshot.selectedConversationId
+            refreshSessionModes()
             conversationsById = snapshot.conversationsById
             conversationTitles = snapshot.titles
             conversationUpdatedAt = snapshot.updatedAt
@@ -824,6 +914,7 @@ internal class AgentAppState(
         conversationsById = conversationsById + (conversationId to resolvedState)
         homeState = resolvedState
         conversationPaneState = conversationPaneState.copy(selectedConversationId = conversationId)
+        refreshSessionModes()
         persistConversations()
     }
 
@@ -831,6 +922,7 @@ internal class AgentAppState(
         if (homeState.messageEdit != null) cancelMessageEdit()
         fileAttachmentOwnerVersion += 1
         selectedConversationId = null
+        refreshSessionModes()
         homeState = emptyChatState(defaultThinkingEnabled).withCurrentReasoningCapabilities()
         conversationPaneState = conversationPaneState.copy(
             selectedConversationId = null,
@@ -851,6 +943,7 @@ internal class AgentAppState(
             AgentModelClient.ConversationMessage(role = "assistant", content = text, messageId = greetingId),
         )
         selectedConversationId = id
+        refreshSessionModes()
         homeState = emptyChatState(defaultThinkingEnabled).withCurrentReasoningCapabilities().copy(
             roleplay = binding,
             history = transcript,
@@ -891,6 +984,7 @@ internal class AgentAppState(
                 selectedConversationId = null
                 homeState = emptyChatState(defaultThinkingEnabled).withCurrentReasoningCapabilities()
             }
+            refreshSessionModes()
         }
         conversationPaneState = conversationPaneState.copy(selectedConversationId = selectedConversationId)
         refreshConversationSummaries()
@@ -1001,6 +1095,9 @@ internal class AgentAppState(
 
         val conversationId = selectedConversationId ?: newConversationId().also {
             selectedConversationId = it
+            // 第一次发消息之前设的计划 / 目标模式：那时还没有对话 id，意图只在内存里；
+            // id 一落地就带上（同步落盘：这一轮的覆盖层正是按这个 id 去读模式的）。
+            persistSessionModes(it, synchronous = true)
         }
         val runId = "run-${UUID.randomUUID()}"
         val userMessage = UserMessageUi(
@@ -1155,6 +1252,7 @@ internal class AgentAppState(
             conversationUpdatedAt = conversationUpdatedAt - conversationId
             fileAttachmentOwnerVersion += 1
             selectedConversationId = null
+            refreshSessionModes()
             homeState = emptyChatState(defaultThinkingEnabled).withCurrentReasoningCapabilities()
             conversationPaneState = conversationPaneState.copy(selectedConversationId = null)
             refreshConversationSummaries()
@@ -2408,6 +2506,7 @@ internal class AgentAppState(
     private fun moveCurrentDraftToNewConversation() {
         val draft = homeState
         selectedConversationId = null
+        refreshSessionModes()
         homeState = emptyChatState(defaultThinkingEnabled).copy(
             input = draft.input,
             thinkingEnabled = draft.reasoningEffort.enablesReasoning,
