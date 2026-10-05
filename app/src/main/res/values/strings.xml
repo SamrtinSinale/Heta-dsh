@@ -1341,7 +1341,7 @@
   <string name="extensions_title">Extensions</string>
   <string name="extensions_note_hmr">Changes take effect next time you open a chat.</string>
   <string name="extensions_note_order">The list keeps the runtime load order.</string>
-  <string name="extensions_note_plugins">Changes take effect in the next chat; the list keeps the runtime’s own load order.</string>
+  <string name="extensions_note_plugins">Changes take effect in the next session; the list keeps the runtime’s own load order.</string>
   <string name="chat_command_plan_hint">Enter plan mode: plan first, act after you approve</string>
   <string name="chat_command_plan_off_hint">Leave plan mode</string>
   <string name="chat_command_goal_hint">Set a goal — type the objective after the command</string>
@@ -1360,8 +1360,8 @@
   <string name="chat_mode_plan_off">Plan mode off — takes effect on your next message.</string>
   <string name="chat_mode_goal_saved">Goal set — takes effect on your next message.</string>
   <string name="chat_mode_goal_cleared">Goal cleared — takes effect on your next message.</string>
-  <string name="extensions_preset_note">Choose the agent’s tools and how it works. A switch here applies to your next message.</string>
-  <string name="extensions_preset_saved">Switched; it applies to your next message.</string>
+  <string name="extensions_preset_note">Choose the agent’s tools and working style; a switch applies from your next message.</string>
+  <string name="extensions_preset_saved">Preset mode switched.</string>
   <string name="extensions_preset_custom_name">Custom mode</string>
   <string name="extensions_preset_custom_summary">Have the agent build a mode of your own: it switches to Creator mode and takes you back to the chat.</string>
   <string name="extensions_live_probe_override">Off for this read-only pass; it is on in a real chat.</string>
@@ -1381,8 +1381,8 @@
   <string name="extensions_bundle_rows">%1$d plugin rows</string>
   <string name="extensions_row_unresolved">Cannot tell whether this is on or off.</string>
   <string name="extensions_row_mentioned_by">Also changed by %1$s</string>
-  <string name="extensions_message_saved">Saved; it takes effect next time you open a chat.</string>
-  <string name="extensions_message_unchanged">Already in that state; nothing was changed.</string>
+  <string name="extensions_message_saved">Saved. It takes effect in the next session.</string>
+  <string name="extensions_message_unchanged">Already in that state; no change was made.</string>
   <string name="extensions_write_failed">Could not save: %1$s</string>
   <string name="extensions_detail_toggle">Show or hide details</string>
   <string name="extensions_detail_full_name">Full name</string>

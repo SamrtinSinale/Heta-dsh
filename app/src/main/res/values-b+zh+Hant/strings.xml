@@ -1307,7 +1307,7 @@
   <string name="extensions_title">擴充</string>
   <string name="extensions_note_hmr">改動下次開對話才生效。</string>
   <string name="extensions_note_order">清單順序就是執行階段自己的載入順序。</string>
-  <string name="extensions_note_plugins">改動下次開對話才生效；清單順序就是執行階段自己的載入順序。</string>
+  <string name="extensions_note_plugins">改動將於下次工作階段生效；清單順序即執行階段的載入順序。</string>
   <string name="chat_command_plan_hint">進入計畫模式：先出方案，確認後再動手</string>
   <string name="chat_command_plan_off_hint">退出計畫模式</string>
   <string name="chat_command_goal_hint">設定一個目標 —— 指令後面接著寫目標內容</string>
@@ -1326,8 +1326,8 @@
   <string name="chat_mode_plan_off">計畫模式已關閉，下一則訊息生效。</string>
   <string name="chat_mode_goal_saved">目標已設定，下一則訊息生效。</string>
   <string name="chat_mode_goal_cleared">目標已清除，下一則訊息生效。</string>
-  <string name="extensions_preset_note">選擇 Agent 的工具與工作方式。切換後下一則訊息就生效。</string>
-  <string name="extensions_preset_saved">已切換，下一則訊息就生效。</string>
+  <string name="extensions_preset_note">選擇 Agent 的工具與工作方式；切換後於下一則訊息生效。</string>
+  <string name="extensions_preset_saved">預設模式已切換。</string>
   <string name="extensions_preset_custom_name">自訂模式</string>
   <string name="extensions_preset_custom_summary">讓 Agent 幫你做一個屬於自己的模式：會切到「創造模式」並回到對話。</string>
   <string name="extensions_live_probe_override">這一輪被暫時關掉了（真實對話時開著）。</string>
@@ -1347,8 +1347,8 @@
   <string name="extensions_bundle_rows">%1$d 行外掛</string>
   <string name="extensions_row_unresolved">看不出它是開還是關。</string>
   <string name="extensions_row_mentioned_by">另外還被 %1$s 改過</string>
-  <string name="extensions_message_saved">已儲存，下次開對話生效。</string>
-  <string name="extensions_message_unchanged">本來就是這狀態，沒有改動。</string>
+  <string name="extensions_message_saved">設定已儲存，將於下次工作階段生效。</string>
+  <string name="extensions_message_unchanged">目前已是該狀態，未做改動。</string>
   <string name="extensions_write_failed">寫入失敗：%1$s</string>
   <string name="extensions_detail_toggle">展開或收合詳情</string>
   <string name="extensions_detail_full_name">完整名稱</string>

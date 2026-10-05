@@ -529,7 +529,12 @@ private fun LazyListScope.dshLiveSections(
                     isLast = index == live.presets.lastIndex,
                     hasLeading = true,
                 ) {
-                    DshPresetChoiceRow(store, preset)
+                    DshPresetChoiceRow(
+                        store = store,
+                        preset = preset,
+                        isFirst = index == 0,
+                        isLast = index == live.presets.lastIndex,
+                    )
                 }
             }
         }
@@ -696,7 +701,12 @@ private fun DshDetailNote(text: String) {
  * 照实显示 —— 那是这一行唯一能说明"为什么没有行"的东西。
  */
 @Composable
-private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset) {
+private fun DshPresetChoiceRow(
+    store: DshExtensionsStore,
+    preset: DshLivePreset,
+    isFirst: Boolean,
+    isLast: Boolean,
+) {
     val broken = preset.broken
     val selected = store.selectedPresetId == preset.id
     val context = LocalContext.current
@@ -718,6 +728,8 @@ private fun DshPresetChoiceRow(store: DshExtensionsStore, preset: DshLivePreset)
         enabled = broken == null,
         onSelect = { store.selectPreset(preset.id) },
         onGuide = { guideOpen = true },
+        isFirst = isFirst,
+        isLast = isLast,
     )
     DshPresetGuideDialog(presetId = if (guideOpen) preset.id else null) { guideOpen = false }
 }

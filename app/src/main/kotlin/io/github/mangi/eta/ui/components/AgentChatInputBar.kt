@@ -19,7 +19,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -378,17 +377,14 @@ internal fun AgentChatInputBar(
                             // 干脆不用库的 indication（`indication = null`），按下态自己画：
                             // 一个圆形背景，颜色深浅由按下状态驱动。
                             val presetInteraction = remember { MutableInteractionSource() }
-                            val presetPressed by presetInteraction.collectIsPressedAsState()
+                            // 与预设行同一套：按下即亮，并保证亮够一段时间（轻点也看得见）。
+                            val presetHighlight = rememberPressHighlight(presetInteraction)
                             Box(
                                 modifier = Modifier
                                     .size(ChatInputActionSize)
                                     .clip(CircleShape)
                                     .background(
-                                        if (presetPressed) {
-                                            MiuixTheme.colorScheme.onSurface.copy(alpha = 0.10f)
-                                        } else {
-                                            Color.Transparent
-                                        },
+                                        MiuixTheme.colorScheme.onSurface.copy(alpha = 0.12f * presetHighlight),
                                         CircleShape,
                                     )
                                     .clickable(

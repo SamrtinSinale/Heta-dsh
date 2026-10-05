@@ -1,7 +1,6 @@
 package io.github.mangi.eta.ui.components
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,24 +75,33 @@ internal fun DshPresetRow(
     selected: Boolean,
     onSelect: () -> Unit,
     onGuide: (() -> Unit)?,
+    isFirst: Boolean,
+    isLast: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    // 按下态自己画成**圆角**：`EtaPreferenceRow` 的按下反馈来自主题的 indication，画出来是铺满
-    // 整行的矩形（真机反馈"点击按下的色块还是矩形色块"）。所以这里 `indication = null`，
-    // 自己按状态给一个圆角背景。
+    // 按下态自己画：`EtaPreferenceRow` 的按下反馈来自主题的 indication，画出来是铺满整行的矩形
+    //（真机反馈"点击按下的色块还是矩形色块"）。所以这里 `indication = null`，自己按状态给色块。
+    //
+    // 形状按它在**这一组里的位置**给 —— 真机反馈原话："不要四个模式都是圆角矩形，改成整体模式
+    // 切换是圆角矩形，中间两个不要圆角，标准模式上面两个角是 R 角，创造模式底部两个是 R 角"。
+    // 半径用分组卡片的那个（[EtaCardDefaults.CornerRadius]）：扩展页那四行本来就套在
+    // `EtaPreferenceGroupItem` 里，色块的角要和卡片的角对齐。
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
+    // 轻点也要看得见，且要渐变（同 3.0.7.23 的观感）：见 [rememberPressHighlight]。
+    val highlight = rememberPressHighlight(interactionSource)
+    val corner = EtaCardDefaults.CornerRadius
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .squircleSurface(
-                color = if (pressed) {
-                    MiuixTheme.colorScheme.surfaceContainerHigh
-                } else {
-                    Color.Transparent
-                },
-                cornerRadius = 12.dp,
+                // 灰色按下块：`surfaceContainerHigh` 在弹层底色（`surfaceContainer`）上几乎看不出
+                // 差别，真机反馈"你怎么把灰色矩形色块给写没了"—— 改用 onSurface 8% 的灰，看得见。
+                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.08f * highlight),
+                topStart = if (isFirst) corner else 0.dp,
+                topEnd = if (isFirst) corner else 0.dp,
+                bottomStart = if (isLast) corner else 0.dp,
+                bottomEnd = if (isLast) corner else 0.dp,
             ),
     ) {
         EtaPreferenceRow(
@@ -170,13 +178,16 @@ internal fun DshPresetChooser(
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     Column(modifier = modifier.fillMaxWidth()) {
-        DshPresetPlane.PRESET_IDS.forEach { id ->
+        val ids = DshPresetPlane.PRESET_IDS
+        ids.forEachIndexed { index, id ->
             DshPresetRow(
                 name = DshPresetGuides.name(context, id, locale) ?: id,
                 description = DshPresetGuides.description(context, id, locale),
                 selected = id == selectedId,
                 onSelect = { onSelected(id) },
                 onGuide = { onGuide(id) },
+                isFirst = index == 0,
+                isLast = index == ids.lastIndex,
             )
         }
     }

@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.screens.extensions
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -351,9 +352,15 @@ internal class DshExtensionsStore(
      * 事实，改不了；页面按本地选择显示"新任务默认"。
      */
     fun selectPreset(id: String) {
-        // 点已选中的那一行等于什么都没发生（单选行点自己），不给提示 —— 真机反馈这句
-        // "本来就是这状态，没有改动"与"已切换，下一条消息就生效"交替出现，看着像自相矛盾。
-        if (id == selectedPresetId) return
+        // 点已选中的那一行：照旧给一句「当前已是该状态，未做改动」—— 静默反而让人以为没点上
+        //（真机反馈：上一版把这条提示删了）。
+        //
+        // 用 Toast 而不是页面里那行文字：页面级提示与预设段的分区说明会挤在一起，真机反馈
+        // "那个字还是与提示重叠"。瞬时反馈浮在底部，页面里只留分区说明。
+        if (id == selectedPresetId) {
+            notice(R.string.extensions_message_unchanged)
+            return
+        }
         // 预设不分文件层的写路径：这里不动 profile 补丁层，所以不走 write()（那个路径会去修 owner、
         // 锁 working）。commit() 是一次很小的磁盘写，放 IO 里。
         scope.launch {
@@ -365,11 +372,8 @@ internal class DshExtensionsStore(
             // 发布到进程内那一份：聊天页顶栏也跟着变（一个值两个入口）。这一步在主线程上
             // （上面那次 withContext(IO) 已经回来了）。
             DshPresetUi.publish(id)
-            // 预设切换**下一条消息就生效**（真机实测），而插件开关要等下一次开对话 —— 两者不能
-            // 共用一句"已保存，下次开对话生效"：真机反馈"切换模式后还是提示已保存下次开对话生效，
-            // 和预设下面那句冲突了"。
-            message = appContext.getString(R.string.extensions_preset_saved)
-            messageIsError = false
+            // 生效时机由预设段的分区说明负责讲（"切换后于下一条消息生效"），这里只说发生了什么。
+            notice(R.string.extensions_preset_saved)
         }
     }
 
@@ -430,6 +434,13 @@ internal class DshExtensionsStore(
                 message = result.reason
                 messageIsError = true
             }
+        }
+    }
+
+    /** 瞬时反馈走 Toast：页面里那行提示留给需要回看的错误原文（见 [fail]）。 */
+    private fun notice(resourceId: Int) {
+        runCatching {
+            Toast.makeText(appContext, appContext.getString(resourceId), Toast.LENGTH_SHORT).show()
         }
     }
 
