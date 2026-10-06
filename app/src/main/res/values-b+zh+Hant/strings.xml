@@ -1358,6 +1358,8 @@
   <string name="extensions_state_disabled">已停用</string>
   <string name="extensions_no_module_name">（沒有名字）</string>
   <string name="extensions_live_loading">正在讀取外掛狀態…</string>
+  <string name="extensions_live_loading_probe">正在讀取外掛狀態……沒找到工作階段寫出的清單，要真起一次 dsh（約 30 秒）。</string>
+  <string name="extensions_live_loading_home">正在讀取外掛狀態……讀的是工作階段寫出的清單（要走一次 root）。</string>
   <string name="extensions_live_unavailable">沒讀到實際執行狀態（%1$s），先顯示設定檔。</string>
   <string name="extensions_live_note">這裡的「已停用」只是臨時清單，真實對話時開著。</string>
   <string name="extensions_live_summary">%1$s · %2$s</string>

@@ -113,6 +113,12 @@ internal class DshExtensionsStore(
     private var loadingNow = false
 
     /**
+     * 活清单**这一次是从哪来的**：`runtime-file`（毫秒级）/ `home-file`（要 su）/ `probe`（要起 dsh，
+     * ~27 秒）。界面在"正在读取"那句后面把它写出来 —— 慢的时候能一眼看出在等什么。
+     */
+    val liveSource: String get() = DshInventoryProbe.lastSource
+
+    /**
      * 本地刚改过的行：补丁行 id → 用户点出来的开 / 关。
      *
      * 为什么需要它：写完文件 dsh 并不会立刻重载（hmr 在 profile 里是关的），活清单里的 `enabled`
@@ -253,7 +259,11 @@ internal class DshExtensionsStore(
             liveLoading = cached == null
             try {
                 // 探针会走 su + chroot（阻塞在 waitFor 上），必须在 IO 上下文里。
-                when (val probe = withContext(Dispatchers.IO) { DshInventoryProbe.read(appContext) }) {
+                // 走 `loadOnce`：与 App 起来时那次预热**并成一次**（不然两边各起一个 dsh）。
+                val probe = withContext(Dispatchers.IO) {
+                    DshLiveInventoryCache.loadOnce { DshInventoryProbe.read(appContext) }
+                }
+                when (probe) {
                     is DshLiveInventory.Ready -> {
                         DshLiveInventoryCache.put(probe)
                         live = probe

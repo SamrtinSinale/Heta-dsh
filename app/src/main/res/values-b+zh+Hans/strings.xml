@@ -1370,6 +1370,8 @@
   <string name="extensions_state_disabled">已禁用</string>
   <string name="extensions_no_module_name">（没有名字）</string>
   <string name="extensions_live_loading">正在读取插件状态…</string>
+  <string name="extensions_live_loading_probe">正在读取插件状态……没找到会话写出的清单，要真起一次 dsh（约 30 秒）。</string>
+  <string name="extensions_live_loading_home">正在读取插件状态……读的是会话写出的清单（要走一次 root）。</string>
   <string name="extensions_live_unavailable">没读到实际运行状态（%1$s），先显示配置文件。</string>
   <string name="extensions_live_note">这里的“已禁用”只是临时清单，真实对话时开着。</string>
   <string name="extensions_live_summary">%1$s · %2$s</string>

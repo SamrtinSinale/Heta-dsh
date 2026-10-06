@@ -123,7 +123,9 @@ fun AgentAppRoot(
     //（见 DshExtensionsStore 的类头）。
     LaunchedEffect(Unit) {
         if (!DshLiveInventoryCache.isStale()) return@LaunchedEffect
-        withContext(Dispatchers.IO) { DshLiveInventoryCache.put(DshInventoryProbe.read(context)) }
+        withContext(Dispatchers.IO) {
+            DshLiveInventoryCache.loadOnce { DshInventoryProbe.read(context) }
+        }
     }
     LaunchedEffect(openSpeechSettings) {
         if (openSpeechSettings) {

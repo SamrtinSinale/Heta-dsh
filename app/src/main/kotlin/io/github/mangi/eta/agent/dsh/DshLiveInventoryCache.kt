@@ -1,5 +1,8 @@
 package io.github.mangi.eta.agent.dsh
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
 /**
  * 活清单的**进程级**缓存。
  *
@@ -38,6 +41,18 @@ internal object DshLiveInventoryCache {
 
     /** 上一次探到的活清单；null = 一次都还没探到过（这时才需要真起一次 dsh）。 */
     fun get(): DshLiveInventory.Ready? = synchronized(lock) { snapshot }
+
+    /**
+     * 同一时刻只允许一次**真探**，后来者等这一次的结果。
+     *
+     * 为什么需要：App 起来时会预热一次（`AgentAppRoot`），而用户完全可能在那 ~27 秒里就点开扩展页
+     * —— 两边各起一个 dsh 不只是慢一倍：两个进程读同一份 profile，谁也不知道对方在读。
+     * 用一把锁把它们并成一次；先到的那次把结果放进缓存，后到的直接拿缓存。
+     */
+    private val probing = Mutex()
+
+    suspend fun loadOnce(block: suspend () -> DshLiveInventory): DshLiveInventory =
+        probing.withLock { get() ?: block().also { put(it) } }
 
     /** 存下一次**成功**的探针结果：算作"刚拿到"，并且不再是脏的。 */
     fun put(value: DshLiveInventory) {

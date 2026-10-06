@@ -1392,6 +1392,8 @@
   <string name="extensions_state_disabled">Disabled</string>
   <string name="extensions_no_module_name">(no name)</string>
   <string name="extensions_live_loading">Reading plugin status...</string>
+  <string name="extensions_live_loading_probe">Reading plugin status... no snapshot from the session was found, so DSH has to be started once (about 30 seconds).</string>
+  <string name="extensions_live_loading_home">Reading plugin status... reading the snapshot the session wrote (needs root).</string>
   <string name="extensions_live_unavailable">Running status unavailable (%1$s); showing saved settings.</string>
   <string name="extensions_live_note">A switch shown as off here is off only for this temporary list.</string>
   <string name="extensions_live_summary">%1$s · %2$s</string>

@@ -68,6 +68,16 @@ internal object DshInventoryProbe {
     private const val SU = "su"
 
     /**
+     * 这一次活清单是**从哪来的**。
+     *
+     * 为什么要说出来：这条路有两种走法 —— 读会话写出的文件（毫秒级）或真起一个 dsh（~27 秒）。
+     * 真机上"到底在等什么"以前只能靠猜（我为此猜错了三版），现在界面上直接写出来。
+     */
+    @Volatile
+    var lastSource: String = ""
+        private set
+
+    /**
      * 会话进程写出来的那份清单：`$DSH_HOME/heta-inventory.json`（chroot 里是 `/root/.dsh`，
      * 宿主上就是 runtime root 下的 `root/.dsh`）。
      *
@@ -110,6 +120,7 @@ internal object DshInventoryProbe {
      */
     private fun readStatusFile(root: File): DshLiveInventory.Ready? {
         // ① runtime 目录里那一份：普通文件读，毫秒级。
+        lastSource = "runtime-file"
         val shared = File(root, SHARED_RELATIVE)
         runCatching { shared.readText() }
             .getOrNull()
@@ -117,6 +128,7 @@ internal object DshInventoryProbe {
             ?.let { text -> DshLiveInventoryCodec.parse(text) as? DshLiveInventory.Ready }
             ?.let { return it }
         // ② `$DSH_HOME` 那一份：root 私有，得走 su。
+        lastSource = "home-file"
         val file = File(root, STATUS_RELATIVE)
         val out = runCatching { File.createTempFile("dsh-status-", ".json") }.getOrNull() ?: return null
         return try {
@@ -160,9 +172,11 @@ internal object DshInventoryProbe {
         if (!DshRuntimeInstaller.isReady(context)) {
             return DshLiveInventory.Failed("对话运行时还没装好，读不到活清单")
         }
-        // 先看会话进程写出来的那份（同一个投影，一次 cat 就够）；读不到 / 太旧 / 解析不了
-        // 都直接往下走 —— 下面那条探针照旧是兜底。
+        // 先看会话进程写出来的那份（同一个投影）；读不到 / 太旧 / 解析不了都直接往下走 ——
+        // 下面那条探针照旧是兜底。`lastSource` 记下这次走的是哪条路，界面会写出来。
+        lastSource = "runtime"
         readStatusFile(root)?.let { return it }
+        lastSource = "probe"
         val logs = runCatching {
             File.createTempFile("dsh-inventory-out-", ".log") to
                 File.createTempFile("dsh-inventory-err-", ".log")
