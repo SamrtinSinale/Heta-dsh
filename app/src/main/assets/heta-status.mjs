@@ -24,7 +24,7 @@
  * config（覆盖层那一行可以给的键，都可以不给）：
  *   intervalMs: number   轮询间隔，默认 3000
  */
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -151,12 +151,24 @@ async function readInventory(ctx) {
  * 写文件走"先写临时文件再改名"：App 可能正好在读 —— 直接覆盖会读到写了一半的 JSON。
  * 失败只吞掉（这一条路是尽力而为，探针还在）。
  */
-function writeJson(file, value) {
+function writeJson(file, value, share = false) {
   try {
-    mkdirSync(dirname(file), { recursive: true })
+    const dir = dirname(file)
+    mkdirSync(dir, { recursive: true })
     const temp = `${file}.tmp`
     writeFileSync(temp, MARKER + JSON.stringify(value) + '\n')
     renameSync(temp, file)
+    if (share) {
+      // 权限要**明确**摆正，不能靠 umask：这份文件是给 App（另一个 uid）直接读的。
+      // 目录也要可穿越 —— 真机反馈"读的是会话写出的清单（要走一次 root）"说明共享那份没读到，
+      // 而 App 读不动它的唯一可能就是这个（文件 0644 + 目录 0755 才行）。
+      try {
+        chmodSync(file, 0o644)
+      } catch {}
+      try {
+        chmodSync(dir, 0o755)
+      } catch {}
+    }
     return true
   } catch {
     return false
@@ -193,7 +205,7 @@ export function apply(ctx, config) {
       const signature = signatureOf(snapshot)
       if (signature === lastSignature) return
       const body = { at: Date.now(), ...snapshot }
-      if (writeJson(INVENTORY_FILE, body) && writeJson(SHARED_FILE, body)) {
+      if (writeJson(INVENTORY_FILE, body) && writeJson(SHARED_FILE, body, true)) {
         lastSignature = signature
         try {
           rmSync(ERROR_FILE, { force: true })

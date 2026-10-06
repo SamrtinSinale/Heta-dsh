@@ -186,11 +186,11 @@ internal fun DshExtensionsScreen(
                 // 把"这一次在等什么"一起说出来：读会话写出的文件是毫秒级，真起一次 dsh 要 ~27 秒。
                 // 以前这句只有"正在读取插件状态…"，慢的时候谁也看不出区别（我为此刻意加的这一行）。
                 DshNote(
-                    when (store.liveSource) {
-                        "probe" -> stringResource(R.string.extensions_live_loading_probe)
-                        "home-file" -> stringResource(R.string.extensions_live_loading_home)
+                    when {
+                        store.liveSource == "probe" -> stringResource(R.string.extensions_live_loading_probe)
+                        store.liveSource.startsWith("home") -> stringResource(R.string.extensions_live_loading_home)
                         else -> stringResource(R.string.extensions_live_loading)
-                    },
+                    } + "［" + store.liveSource + "］",
                 )
             }
         }

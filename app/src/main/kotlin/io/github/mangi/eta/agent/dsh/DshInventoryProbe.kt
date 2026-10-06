@@ -119,11 +119,17 @@ internal object DshInventoryProbe {
      * 为什么 stdout 重定向到文件而不是管道：管道只有 64KB，这份 JSON 会超过它。
      */
     private fun readStatusFile(root: File): DshLiveInventory.Ready? {
-        // ① runtime 目录里那一份：普通文件读，毫秒级。
-        lastSource = "runtime-file"
+        // ① runtime 目录里那一份：普通文件读，毫秒级。**读不动的原因要留下来** ——
+        // 真机上"到底为什么没用这一份"以前只能猜（这一次就是栽在这里）。
         val shared = File(root, SHARED_RELATIVE)
-        runCatching { shared.readText() }
-            .getOrNull()
+        val sharedText = runCatching { shared.readText() }
+        lastSource = when {
+            sharedText.isFailure -> "shared-failed:" + describe(sharedText.exceptionOrNull()!!)
+            sharedText.getOrNull().isNullOrBlank() -> "shared-missing"
+            !statusIsFresh(sharedText.getOrNull()!!) -> "shared-stale"
+            else -> "shared-file"
+        }
+        sharedText.getOrNull()
             ?.takeIf { it.isNotBlank() && statusIsFresh(it) }
             ?.let { text -> DshLiveInventoryCodec.parse(text) as? DshLiveInventory.Ready }
             ?.let { return it }
