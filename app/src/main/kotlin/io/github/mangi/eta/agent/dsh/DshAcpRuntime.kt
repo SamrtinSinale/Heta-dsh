@@ -393,6 +393,12 @@ internal class DshAcpRuntime(
                     totalTokens = turn.totalTokens,
                     turn = turn.turn,
                     steps = turn.steps,
+                    llmMs = turn.llmMs,
+                    toolMs = turn.toolMs,
+                    ttftMs = turn.ttftMs,
+                    ttftSteps = turn.ttftSteps,
+                    decodeMs = turn.decodeMs,
+                    decodeTokens = turn.decodeTokens,
                 ),
             )
         )

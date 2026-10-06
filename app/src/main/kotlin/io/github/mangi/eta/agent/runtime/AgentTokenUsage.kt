@@ -19,6 +19,13 @@ internal data class AgentTokenUsage(
     /** dsh 的轮次与步数（只有 dsh 这条会话报得出来）：界面上"第几轮 / 走了几步"。 */
     val turn: Int? = null,
     val steps: Int? = null,
+    /** 时间口径（照客户端 deriveStats）：模型用时 / 工具用时 / TTFT / 解码时长与 token（算 TPS）。 */
+    val llmMs: Long? = null,
+    val toolMs: Long? = null,
+    val ttftMs: Long? = null,
+    val ttftSteps: Int? = null,
+    val decodeMs: Long? = null,
+    val decodeTokens: Int? = null,
 ) {
     val isEmpty: Boolean
         get() = contextTokens == null &&
@@ -29,5 +36,11 @@ internal data class AgentTokenUsage(
             cacheWriteTokens == null &&
             totalTokens == null &&
             turn == null &&
-            steps == null
+            steps == null &&
+            llmMs == null &&
+            toolMs == null &&
+            ttftMs == null &&
+            ttftSteps == null &&
+            decodeMs == null &&
+            decodeTokens == null
 }

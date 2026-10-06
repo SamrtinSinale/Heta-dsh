@@ -29,8 +29,59 @@ internal data class DshTurnUsage(
     val cacheWriteTokens: Int? = null,
     val reasoningTokens: Int? = null,
     val totalTokens: Int? = null,
+    /**
+     * 时间口径 —— 逐条照客户端 `deriveStats`：
+     *   · [llmMs] = Σ(assistant 落定时刻 − step/start 时刻)；
+     *   · [toolMs] = Σ(tool/result 时刻 − tool/call 时刻)；
+     *   · [ttftMs] / [ttftSteps] = Σ(首个流片段时刻 − step/start 时刻) 与有该值的步数；
+     *   · [decodeMs] / [decodeTokens] = Σ(落定时刻 − 首个流片段时刻) 与 Σ输出 token
+     *     —— 两者相除就是输出速度（TPS）。
+     */
+    val llmMs: Long? = null,
+    val toolMs: Long? = null,
+    val ttftMs: Long? = null,
+    val ttftSteps: Int? = null,
+    val decodeMs: Long? = null,
+    val decodeTokens: Int? = null,
     /** 这一轮最后一次写入的时间（毫秒）；界面不用它，排查时用。 */
     val at: Long = 0L,
+)
+
+/**
+ * 会话累计（插件跨回合累加：一轮一进程，所以它启动时会读回上一份接着加）。
+ *
+ * 为什么界面不自己按消息加起来：会话里可能有插件之前那些轮次（文件里被裁掉的旧轮），
+ * 累计值只有插件那边算得全 —— 客户端也是读整条会话日志的投影，不是数屏幕上这几条。
+ */
+internal data class DshSessionTotals(
+    val turns: Int? = null,
+    val steps: Int? = null,
+    val llmMs: Long? = null,
+    val toolMs: Long? = null,
+    val ttftMs: Long? = null,
+    val ttftSteps: Int? = null,
+    val decodeMs: Long? = null,
+    val decodeTokens: Int? = null,
+    val inputTokens: Int? = null,
+    val outputTokens: Int? = null,
+    val cacheReadTokens: Int? = null,
+    val cacheWriteTokens: Int? = null,
+)
+
+/**
+ * 当前上下文：占用 / 窗口，以及**启发式**构成（系统提示词 / 工具定义 / 对话消息）。
+ *
+ * 来自 dsh 的 `sessionProjections` 投影（`contextPressure` / `contextBreakdown`）——
+ * 官方说明里那三个构成数是**估算**（估算器系统性低估 CJK 与 JSON schema），所以界面上要带 `~`，
+ * 而且它们加起来不等于占用值。这一点照客户端：估算就写成估算。
+ */
+internal data class DshContextUsage(
+    val pressureTokens: Int? = null,
+    val projectedTokens: Int? = null,
+    val contextWindow: Int? = null,
+    val systemTokens: Int? = null,
+    val toolsTokens: Int? = null,
+    val messageTokens: Int? = null,
 )
 
 /** 一个会话的若干轮（新到旧都有，界面只取最新的那一轮）。 */
@@ -38,6 +89,8 @@ internal data class DshUsageSession(
     val id: String,
     val at: Long,
     val turns: List<DshTurnUsage>,
+    val totals: DshSessionTotals = DshSessionTotals(),
+    val context: DshContextUsage? = null,
 ) {
     /** 这个会话最新的那一轮；没有轮次就是 null。 */
     val latestTurn: DshTurnUsage? get() = turns.maxByOrNull { it.turn }
@@ -72,6 +125,21 @@ internal object DshUsageCodec {
     private const val CACHE_WRITE = "cacheWriteTokens"
     private const val REASONING = "reasoningTokens"
     private const val TOTAL = "totalTokens"
+    private const val TOTALS = "totals"
+    private const val CONTEXT = "context"
+    private const val LLM_MS = "llmMs"
+    private const val TOOL_MS = "toolMs"
+    private const val TTFT_MS = "ttftMs"
+    private const val TTFT_STEPS = "ttftSteps"
+    private const val DECODE_MS = "decodeMs"
+    private const val DECODE_TOKENS = "decodeTokens"
+    private const val TURN_COUNT = "turnCount"
+    private const val PRESSURE = "pressureTokens"
+    private const val PROJECTED = "projectedTokens"
+    private const val WINDOW = "contextWindow"
+    private const val SYSTEM = "systemTokens"
+    private const val TOOLS = "toolsTokens"
+    private const val MESSAGES = "messageTokens"
 
     fun parse(text: String): DshUsageSnapshot? {
         val marker = text.indexOf(MARKER)
@@ -93,6 +161,8 @@ internal object DshUsageCodec {
                 id = id,
                 at = item.optLong(AT, 0L),
                 turns = readTurns(item.optJSONArray(TURNS)),
+                totals = readTotals(item.optJSONObject(TOTALS)),
+                context = readContext(item.optJSONObject(CONTEXT)),
             )
         }
         return sessions
@@ -114,10 +184,61 @@ internal object DshUsageCodec {
                 cacheWriteTokens = intOrNull(item, CACHE_WRITE),
                 reasoningTokens = intOrNull(item, REASONING),
                 totalTokens = intOrNull(item, TOTAL),
+                llmMs = longOrNull(item, LLM_MS),
+                toolMs = longOrNull(item, TOOL_MS),
+                ttftMs = longOrNull(item, TTFT_MS),
+                ttftSteps = intOrNull(item, TTFT_STEPS),
+                decodeMs = longOrNull(item, DECODE_MS),
+                decodeTokens = intOrNull(item, DECODE_TOKENS),
                 at = item.optLong(AT, 0L),
             )
         }
         return turns
+    }
+
+    /** 会话累计。轮次数在插件那边叫 `turnCount`（`turns` 那个键被轮次数组占了）。 */
+    private fun readTotals(json: JSONObject?): DshSessionTotals {
+        if (json == null) return DshSessionTotals()
+        return DshSessionTotals(
+            turns = intOrNull(json, TURN_COUNT) ?: intOrNull(json, "turns"),
+            steps = intOrNull(json, STEPS),
+            llmMs = longOrNull(json, LLM_MS),
+            toolMs = longOrNull(json, TOOL_MS),
+            ttftMs = longOrNull(json, TTFT_MS),
+            ttftSteps = intOrNull(json, TTFT_STEPS),
+            decodeMs = longOrNull(json, DECODE_MS),
+            decodeTokens = intOrNull(json, DECODE_TOKENS),
+            inputTokens = intOrNull(json, INPUT),
+            outputTokens = intOrNull(json, OUTPUT),
+            cacheReadTokens = intOrNull(json, CACHE_READ),
+            cacheWriteTokens = intOrNull(json, CACHE_WRITE),
+        )
+    }
+
+    /** 上下文投影；一个数都没有就当没有（那份安装没装投影插件时就是这样）。 */
+    private fun readContext(json: JSONObject?): DshContextUsage? {
+        if (json == null) return null
+        val usage = DshContextUsage(
+            pressureTokens = intOrNull(json, PRESSURE),
+            projectedTokens = intOrNull(json, PROJECTED),
+            contextWindow = intOrNull(json, WINDOW),
+            systemTokens = intOrNull(json, SYSTEM),
+            toolsTokens = intOrNull(json, TOOLS),
+            messageTokens = intOrNull(json, MESSAGES),
+        )
+        val empty = usage.pressureTokens == null && usage.projectedTokens == null &&
+            usage.contextWindow == null && usage.systemTokens == null &&
+            usage.toolsTokens == null && usage.messageTokens == null
+        return usage.takeUnless { empty }
+    }
+
+    private fun longOrNull(json: JSONObject, key: String): Long? {
+        if (!json.has(key) || json.isNull(key)) return null
+        return when (val raw = json.opt(key)) {
+            is Number -> raw.toLong()
+            is String -> raw.toLongOrNull()
+            else -> null
+        }
     }
 
     private fun intOrNull(json: JSONObject, key: String): Int? {
@@ -160,6 +281,13 @@ internal object DshUsageReader {
      * 那一刻还是**上一轮**那份 —— 只认这之后写过的轮次，才能保证读到的是这一轮的账（真机上一轮
      * 一进程，这个坑一定会踩到）。传 0 表示不设闸门（单测与排查用）。
      */
+    /** 最近活跃那个会话的累计与上下文（界面：输入框上面那一行与上下文详情）。 */
+    fun latestSession(rootfsPath: String, sessionId: String? = null): DshUsageSession? {
+        val snapshot = read(rootfsPath) ?: return null
+        return sessionId?.takeIf { it.isNotBlank() }?.let { id -> snapshot.sessions.firstOrNull { it.id == id } }
+            ?: snapshot.sessions.maxByOrNull { it.at }
+    }
+
     fun latestTurn(rootfsPath: String, sessionId: String?, notBefore: Long = 0L): DshTurnUsage? {
         val snapshot = read(rootfsPath) ?: return null
         val session = sessionId

@@ -19,6 +19,13 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -279,11 +286,17 @@ internal fun AgentContextUsageButton(
         noLimitText = stringResource(R.string.context_no_model_limit),
         locale = locale,
     )
-    val detail = when {
+    // 上下文**构成**（系统提示词 / 工具定义 / 对话消息）只有会话插件那份文件里有：点开时读一次
+    // （IO 上一次小文件读），读不到就只显示占用 —— 那一份安装没装投影插件时就是这样。
+    val appContext = LocalContext.current
+    var breakdown by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    val baseDetail = when {
         usage.estimated -> stringResource(R.string.context_usage_estimated, summary)
         usage.contextTokens == null -> stringResource(R.string.context_usage_after_response)
         else -> stringResource(R.string.context_usage_previous_response, summary)
     }
+    val detail = (listOf(baseDetail) + breakdown.map { (label, value) -> "$label $value" })
+        .joinToString("\n")
     val usageDescription = stringResource(
         R.string.context_usage_description,
         summary.replace('\n', ' '),
@@ -332,7 +345,12 @@ internal fun AgentContextUsageButton(
         modifier = modifier,
     ) {
         IconButton(
-            onClick = { scope.launch { tooltipState.show() } },
+            onClick = {
+                scope.launch {
+                    breakdown = withContext(Dispatchers.IO) { contextBreakdownRows(appContext) }
+                    tooltipState.show()
+                }
+            },
             minWidth = ChatInputActionSize,
             minHeight = ChatInputActionSize,
         ) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +30,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.dsh.DshRuntimeInstaller
+import io.github.mangi.eta.agent.dsh.DshUsageReader
+import io.github.mangi.eta.ui.model.AgentChatMessageUi
+import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.TokenUsageUi
 import io.github.mangi.eta.ui.model.formatCompactTokenCount
 import java.text.NumberFormat
@@ -67,20 +72,15 @@ internal fun AgentUsageActions(
 ) {
     val locale = LocalConfiguration.current.locales[0]
     val total = billedTokenTotal(usage)
-    val turn = usage.turn
     val steps = usage.steps
-    val hasStats = turn != null && steps != null
-    if (total == null && !hasStats) return
+    if (total == null && steps == null) return
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (hasStats) {
-            AgentStatPill(
-                icon = Icons.Rounded.Speed,
-                label = stringResource(R.string.usage_stats_counts, turn ?: 0, steps ?: 0),
-            )
+        if (steps != null) {
+            AgentTimePill(usage = usage, modifier = Modifier)
         }
         if (total != null) {
             AgentUsagePill(usage = usage, total = total, locale = locale)
@@ -121,13 +121,180 @@ private fun AgentStatPill(
     }
 }
 
+/**
+ * 时间药丸：`2 步 · 185 tok/s`（客户端的 TimePill）。
+ *
+ * 点开是这一轮的 模型用时 / 工具调用用时 / 首 token 平均（TTFT）/ 输出速度（TPS）—— 与客户端
+ * 「会话统计」同一张表、同一套文案，只是这里的数只算这一步 / 这一轮。
+ */
+@Composable
+internal fun AgentTimePill(
+    usage: TokenUsageUi,
+    modifier: Modifier = Modifier,
+    sessionTotals: Boolean = false,
+    turns: Int? = null,
+) {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    var showDetails by remember { mutableStateOf(false) }
+    val steps = usage.steps ?: 0
+    val label = buildString {
+        if (sessionTotals) {
+            append(stringResource(R.string.usage_stats_counts, turns ?: 0, steps))
+        } else {
+            append(stringResource(R.string.usage_stats_steps_only, steps))
+        }
+        tokensPerSecond(usage)?.let { speed ->
+            append(" · ")
+            append(stringResource(R.string.stats_tokens_per_second, speed))
+        }
+    }
+    val rows = remember(usage, locale) { statsDetailRows(context, usage, locale) }
+    Box(modifier = modifier) {
+        AgentStatPill(
+            icon = Icons.Rounded.Speed,
+            label = label,
+            onClick = { showDetails = true },
+        )
+        WindowListPopup(
+            show = showDetails,
+            alignment = PopupPositionProvider.Align.TopEnd,
+            onDismissRequest = { showDetails = false },
+        ) {
+            AgentStatsDetails(
+                context = context,
+                rows = rows,
+                title = stringResource(R.string.stats_dialog_title),
+            )
+        }
+    }
+}
+
+/** 统计详情弹层：标题 + 一条分隔线 + 逐行「标签 → 值」。 */
+@Composable
+private fun AgentStatsDetails(
+    context: Context,
+    rows: List<Pair<String, String>>,
+    title: String,
+) {
+    if (rows.isEmpty()) return
+    ListPopupColumn {
+        Row(
+            modifier = Modifier
+                .width(DetailWidth)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Speed,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp),
+                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = title,
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+        }
+        HorizontalDivider(modifier = Modifier.width(DetailWidth))
+        rows.forEach { (label, value) ->
+            Row(
+                modifier = Modifier
+                    .width(DetailWidth)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = label,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = value,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 输入框上面那一行（客户端的 `StatsPills`）：会话统计 + Token 用量，两个药丸居中。
+ *
+ * 会话统计那颗是 `3 轮 6 步 · 185 tok/s`，点开是「会话统计」（模型用时 / 工具调用用时 /
+ * 首 token 平均（TTFT）/ 输出速度（TPS)）；Token 那颗是 `总量 · 缓存命中 N%`，点开是 Token 用量。
+ */
+@Composable
+internal fun AgentSessionStatsPills(
+    totals: TokenUsageUi,
+    modifier: Modifier = Modifier,
+) {
+    if (totals.isEmpty) return
+    val locale = LocalConfiguration.current.locales[0]
+    val total = billedTokenTotal(totals)
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (totals.steps != null) {
+            AgentTimePill(
+                usage = totals,
+                modifier = Modifier.padding(horizontal = 6.dp),
+                sessionTotals = true,
+                turns = totals.turn,
+            )
+        }
+        if (total != null) {
+            AgentUsagePill(
+                usage = totals,
+                total = total,
+                locale = locale,
+                modifier = Modifier.padding(horizontal = 6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 上下文**构成**那几行（系统提示词 / 工具定义 / 对话消息）—— 只有会话插件那份文件里有。
+ *
+ * 那三个数是官方说明里写明的**启发式估算**（估算器系统性低估 CJK 与 JSON schema），所以值前面
+ * 带 `~`，而且它们加起来不等于占用值：这是"构成"的近似，不是总量。
+ */
+internal fun contextBreakdownRows(context: Context): List<Pair<String, String>> {
+    val root = runCatching { DshRuntimeInstaller.runtimeDirectory(context).absolutePath }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() } ?: return emptyList()
+    val value = DshUsageReader.latestSession(root)?.context ?: return emptyList()
+    val locale = context.resources.configuration.locales[0]
+    fun approx(tokens: Int?): String? = tokens?.let {
+        context.getString(R.string.context_breakdown_approx, formatCompactTokenCount(it, locale))
+    }
+    return listOfNotNull(
+        approx(value.systemTokens)?.let { context.getString(R.string.context_breakdown_system) to it },
+        approx(value.toolsTokens)?.let { context.getString(R.string.context_breakdown_tools) to it },
+        approx(value.messageTokens)?.let { context.getString(R.string.context_breakdown_messages) to it },
+    )
+}
+
 /** 用量药丸：点开是「本轮用量」详情（客户端的 TurnUsagePanel）。 */
 @Composable
-private fun AgentUsagePill(usage: TokenUsageUi, total: Int, locale: Locale) {
+private fun AgentUsagePill(
+    usage: TokenUsageUi,
+    total: Int,
+    locale: Locale,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     var showDetails by remember { mutableStateOf(false) }
     val label = usagePillLabel(context, usage, total, locale)
-    Box {
+    Box(modifier = modifier) {
         AgentStatPill(
             icon = Icons.Rounded.Storage,
             label = label,
@@ -267,6 +434,97 @@ internal fun usagePillLabel(
         ?: return head
     return head + " · " + context.getString(R.string.stats_cache_hit, percent)
 }
+
+/**
+ * 输出速度（TPS）：Σ输出 token ÷ (Σ解码时长 ÷ 1000)，≥10 取整、否则一位小数（照客户端
+ * `formatTokensPerSecond`）。没有解码时长或没有输出 token 时返回 null（那一段不写）。
+ */
+internal fun tokensPerSecond(usage: TokenUsageUi): String? {
+    val ms = usage.decodeMs ?: return null
+    val tokens = usage.decodeTokens ?: return null
+    if (ms <= 0L || tokens <= 0) return null
+    val tps = tokens.toDouble() / (ms.toDouble() / 1000.0)
+    val text = if (tps >= 10.0) Math.round(tps).toString()
+    else (Math.round(tps * 10.0) / 10.0).toString()
+    return text
+}
+
+/**
+ * 时长文本（照客户端 `formatDuration`）：不到一分钟写 `12.3秒`，之后写 `2分42秒`。
+ */
+internal fun formatDurationMs(context: Context, ms: Long): String {
+    val seconds = ms / 1000.0
+    if (seconds < 60.0) {
+        val rounded = Math.round(seconds * 10.0) / 10.0
+        return context.getString(R.string.duration_seconds, rounded.toString())
+    }
+    val whole = Math.round(seconds)
+    return context.getString(R.string.duration_minutes, whole / 60, whole % 60)
+}
+
+/**
+ * 「会话统计」那几行：模型用时 / 工具调用用时 / 首 token 平均（TTFT）/ 输出速度（TPS）。
+ *
+ * 四项都只在该有值时出现（照客户端：`> 0` 才画）—— 拿 0 顶上等于编数。
+ * [usage] 逐轮时是这一轮的数，会话级时是把每条回复加起来的数（见 [sessionTotalsFrom]）。
+ */
+internal fun statsDetailRows(
+    context: Context,
+    usage: TokenUsageUi,
+    locale: java.util.Locale,
+): List<Pair<String, String>> {
+    val rows = ArrayList<Pair<String, String>>(4)
+    usage.llmMs?.takeIf { it > 0 }?.let {
+        rows += context.getString(R.string.stats_dialog_llm_time) to formatDurationMs(context, it)
+    }
+    usage.toolMs?.takeIf { it > 0 }?.let {
+        rows += context.getString(R.string.stats_dialog_tool_time) to formatDurationMs(context, it)
+    }
+    val ttftSteps = usage.ttftSteps ?: 0
+    usage.ttftMs?.takeIf { it > 0 && ttftSteps > 0 }?.let {
+        rows += context.getString(R.string.stats_dialog_ttft) to formatDurationMs(context, it / ttftSteps)
+    }
+    tokensPerSecond(usage)?.let {
+        rows += context.getString(R.string.stats_dialog_speed) to
+            context.getString(R.string.stats_tokens_per_second, it)
+    }
+    return rows
+}
+
+/**
+ * 会话累计：把每条回复的用量加起来。
+ *
+ * 客户端读的是整条会话日志的投影（`sessionStats`）；Heta 这条路上最接近的等价物就是"对话里所有
+ * 回复的用量" —— 每一条都存了库，重启后照样算得出来，不必再去读文件。
+ */
+internal fun sessionTotalsFrom(messages: List<AgentChatMessageUi>): TokenUsageUi {
+    var total = TokenUsageUi()
+    messages.filterIsInstance<AgentMessageUi>().forEach { message ->
+        val usage = message.usage ?: return@forEach
+        total = total.copy(
+            turn = (total.turn ?: 0) + (usage.turn?.let { 1 } ?: 0),
+            steps = sumInt(total.steps, usage.steps),
+            inputTokens = sumInt(total.inputTokens, usage.inputTokens),
+            outputTokens = sumInt(total.outputTokens, usage.outputTokens),
+            cachedTokens = sumInt(total.cachedTokens, usage.cachedTokens),
+            cacheWriteTokens = sumInt(total.cacheWriteTokens, usage.cacheWriteTokens),
+            reasoningTokens = sumInt(total.reasoningTokens, usage.reasoningTokens),
+            llmMs = sumLong(total.llmMs, usage.llmMs),
+            toolMs = sumLong(total.toolMs, usage.toolMs),
+            ttftMs = sumLong(total.ttftMs, usage.ttftMs),
+            ttftSteps = sumInt(total.ttftSteps, usage.ttftSteps),
+            decodeMs = sumLong(total.decodeMs, usage.decodeMs),
+            decodeTokens = sumInt(total.decodeTokens, usage.decodeTokens),
+        )
+    }
+    return total
+}
+
+private fun sumInt(left: Int?, right: Int?): Int? =
+    if (left == null && right == null) null else (left ?: 0) + (right ?: 0)
+
+private fun sumLong(left: Long?, right: Long?): Long? =
+    if (left == null && right == null) null else (left ?: 0L) + (right ?: 0L)
 
 /** 精确值（带千分位）—— 详情里用这个，药丸上用缩写。 */
 internal fun formatExactTokenCount(value: Int, locale: Locale): String =

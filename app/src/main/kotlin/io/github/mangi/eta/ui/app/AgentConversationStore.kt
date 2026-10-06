@@ -220,6 +220,12 @@ internal object AgentConversationStore {
                         totalTokens = usage?.totalTokens,
                         turn = usage?.turn,
                         steps = usage?.steps,
+                        llmMs = usage?.llmMs,
+                        toolMs = usage?.toolMs,
+                        ttftMs = usage?.ttftMs,
+                        ttftSteps = usage?.ttftSteps,
+                        decodeMs = usage?.decodeMs,
+                        decodeTokens = usage?.decodeTokens,
                     )
                 }
             }
@@ -293,6 +299,12 @@ internal object AgentConversationStore {
                     totalTokens = totalTokens,
                     turn = turn,
                     steps = steps,
+                    llmMs = llmMs,
+                    toolMs = toolMs,
+                    ttftMs = ttftMs,
+                    ttftSteps = ttftSteps,
+                    decodeMs = decodeMs,
+                    decodeTokens = decodeTokens,
                 ).takeUnless { it.isEmpty },
             )
 

@@ -26,7 +26,7 @@ import androidx.room.migration.Migration
         CharacterEntity::class,
         UserPersonaEntity::class,
     ],
-    version = 22,
+    version = 23,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -65,6 +65,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_19_20,
                         MIGRATION_20_21,
                         MIGRATION_21_22,
+                        MIGRATION_22_23,
                     )
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) { createTextChunkCleanup(db) }
@@ -81,6 +82,18 @@ internal abstract class EtaDatabase : RoomDatabase() {
                 instance?.close()
                 instance = null
             }
+        }
+
+        /**
+         * 22 → 23：那一行还要显示**时间**（模型用时 / 工具用时 / TTFT / 解码时长与 token）。
+         *
+         * 六个都可空：原生那条会话没有这些数（那是 dsh 的账），NULL 才是"没这个数"。
+         */
+        internal val MIGRATION_22_23 = Migration(22, 23) { database ->
+            listOf("llm_ms", "tool_ms", "ttft_ms", "ttft_steps", "decode_ms", "decode_tokens")
+                .forEach { column ->
+                    database.execSQL("ALTER TABLE conversation_messages ADD COLUMN $column INTEGER")
+                }
         }
 
         /**

@@ -908,6 +908,9 @@ internal object AgentRuntimeWire {
     private fun Bundle.optionalInt(key: String): Int? =
         if (containsKey(key)) getInt(key) else null
 
+    private fun Bundle.optionalLong(key: String): Long? =
+        if (containsKey(key)) getLong(key) else null
+
     private fun Bundle.putTokenUsage(usage: AgentTokenUsage) {
         usage.contextTokens?.let { putInt("usage_context", it) }
         usage.inputTokens?.let { putInt("usage_input", it) }
@@ -920,6 +923,12 @@ internal object AgentRuntimeWire {
         usage.totalTokens?.let { putInt("usage_total", it) }
         usage.turn?.let { putInt("usage_turn", it) }
         usage.steps?.let { putInt("usage_steps", it) }
+        usage.llmMs?.let { putLong("usage_llm_ms", it) }
+        usage.toolMs?.let { putLong("usage_tool_ms", it) }
+        usage.ttftMs?.let { putLong("usage_ttft_ms", it) }
+        usage.ttftSteps?.let { putInt("usage_ttft_steps", it) }
+        usage.decodeMs?.let { putLong("usage_decode_ms", it) }
+        usage.decodeTokens?.let { putInt("usage_decode_tokens", it) }
     }
 
     private fun Bundle.getTokenUsage(): AgentTokenUsage =
@@ -933,6 +942,12 @@ internal object AgentRuntimeWire {
             totalTokens = optionalInt("usage_total"),
             turn = optionalInt("usage_turn"),
             steps = optionalInt("usage_steps"),
+            llmMs = optionalLong("usage_llm_ms"),
+            toolMs = optionalLong("usage_tool_ms"),
+            ttftMs = optionalLong("usage_ttft_ms"),
+            ttftSteps = optionalInt("usage_ttft_steps"),
+            decodeMs = optionalLong("usage_decode_ms"),
+            decodeTokens = optionalInt("usage_decode_tokens"),
         )
 
     private fun decodeCustomHeaders(raw: String?): List<CustomHeader> =

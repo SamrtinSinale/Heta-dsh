@@ -102,6 +102,13 @@ data class TokenUsageUi(
     /** dsh 的轮次与步数（原生那条路没有这两个数，界面就不写这两段）。 */
     val turn: Int? = null,
     val steps: Int? = null,
+    /** 时间口径（照客户端 deriveStats）：模型用时 / 工具用时 / TTFT / 解码时长与 token。 */
+    val llmMs: Long? = null,
+    val toolMs: Long? = null,
+    val ttftMs: Long? = null,
+    val ttftSteps: Int? = null,
+    val decodeMs: Long? = null,
+    val decodeTokens: Int? = null,
 ) {
     val isEmpty: Boolean
         get() = contextTokens == null &&
@@ -112,7 +119,13 @@ data class TokenUsageUi(
             cacheWriteTokens == null &&
             totalTokens == null &&
             turn == null &&
-            steps == null
+            steps == null &&
+            llmMs == null &&
+            toolMs == null &&
+            ttftMs == null &&
+            ttftSteps == null &&
+            decodeMs == null &&
+            decodeTokens == null
 }
 
 @Immutable

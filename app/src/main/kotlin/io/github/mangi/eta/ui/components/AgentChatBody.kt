@@ -174,6 +174,8 @@ internal fun AgentChatBody(
     val contextUsage = remember(messages, modelPickerState.selectedModel) {
         latestContextUsage(messages, modelPickerState.selectedModel)
     }
+    // 输入框上面那一行的会话累计：把每条回复的用量加起来（与客户端读会话日志投影同一个意思）。
+    val sessionTotals = remember(messages) { sessionTotalsFrom(messages) }
 
     val visibleMessages = remember(messages, messageEdit?.targetMessageId, messageEdit?.preserveFollowingMessages) {
         AgentConversationRevisionReducer.visibleMessagesForEdit(

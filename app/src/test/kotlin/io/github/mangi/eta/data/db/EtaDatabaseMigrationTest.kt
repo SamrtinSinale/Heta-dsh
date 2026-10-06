@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class EtaDatabaseMigrationTest {
     @Test
-    fun migration6To22PreservesDataAndMovesCompleteConversationContext() {
+    fun migration6To23PreservesDataAndMovesCompleteConversationContext() {
         val context = RuntimeEnvironment.getApplication() as Context
         val databaseName = "migration-${UUID.randomUUID()}.db"
         createVersion6Database(context, databaseName)
@@ -55,6 +55,7 @@ class EtaDatabaseMigrationTest {
                 EtaDatabase.MIGRATION_19_20,
                 EtaDatabase.MIGRATION_20_21,
                 EtaDatabase.MIGRATION_21_22,
+                EtaDatabase.MIGRATION_22_23,
             )
             .build()
         try {
@@ -125,6 +126,13 @@ class EtaDatabaseMigrationTest {
             assertEquals(null, migratedMessage.totalTokens)
             assertEquals(null, migratedMessage.turn)
             assertEquals(null, migratedMessage.steps)
+            // 22→23 的六个时间列同样在老行上是 NULL。
+            assertEquals(null, migratedMessage.llmMs)
+            assertEquals(null, migratedMessage.toolMs)
+            assertEquals(null, migratedMessage.ttftMs)
+            assertEquals(null, migratedMessage.ttftSteps)
+            assertEquals(null, migratedMessage.decodeMs)
+            assertEquals(null, migratedMessage.decodeTokens)
             assertEquals(emptyList<RuntimeInFlightRunWithEvents>(), inFlightRuns)
             assertEquals(listOf("mcp-1"), mcpServers.map { it.id })
             assertEquals(null, mcpServers.single().toolsExpireAt)

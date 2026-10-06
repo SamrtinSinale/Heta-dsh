@@ -492,12 +492,34 @@ try:
 except ValueError:
     print(0); raise SystemExit
 turns = [t for s in (data.get("sessions") or []) for t in (s.get("turns") or [])]
-print(1 if turns and all((t.get("turn") or 0) > 0 for t in turns) else 0)
+ok = bool(turns) and all((t.get("turn") or 0) > 0 for t in turns)
+# 时间口径也要有：这一步的模型用时是从 step/start 到 assistant/message 落定的差，
+# 真跑一轮必然大于 0（假 LLM 也是真等了一会儿）。
+# 时间口径也要有。注意：文件里可能还留着**上一版插件**写的老会话（那一轮没有 llmMs），
+# 所以这里只要求"至少有一轮带时间"——这一轮跑的肯定是新版插件写的。
+ok = ok and any((t.get("llmMs") or 0) > 0 for t in turns)
+print(1 if ok else 0)
 PY
 )"
   echo "⑬ 用量出口插件：$USAGE_FILE（$(wc -c < "$USAGE_FILE") 字节，断言=${usage_ok:-0}）"
 else
   echo "⑬ 用量出口插件：$USAGE_FILE 不存在 ✗"
+fi
+
+# 上下文那两块（占用 / 窗口 + 系统提示词 / 工具定义 / 对话消息）来自 sessionProjections 投影：
+# 这一份安装里有没有那个投影，这里直接打出来 —— 没有也不算失败（插件会照旧写别的）。
+if [ -f "$USAGE_FILE" ]; then
+  python3 - "$USAGE_FILE" <<'PY'
+import json, sys
+marker = "HETA-USAGE-JSON:"
+text = open(sys.argv[1], encoding="utf-8").read()
+data = json.loads(text.split(marker, 1)[1].splitlines()[0])
+for session in data.get("sessions") or []:
+    totals = session.get("totals") or {}
+    context = session.get("context")
+    print("    会话 %s：totals=%s" % ((session.get("id") or "")[:8], json.dumps(totals, ensure_ascii=False)))
+    print("    上下文投影：%s" % ("（没有这个投影）" if context is None else json.dumps(context, ensure_ascii=False)))
+PY
 fi
 
 SHARED_USAGE="$ROOT/opt/dsh/heta-usage.json"
