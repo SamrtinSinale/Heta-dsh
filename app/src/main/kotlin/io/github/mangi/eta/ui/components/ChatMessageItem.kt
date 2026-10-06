@@ -604,10 +604,14 @@ private fun AgentMessageBlock(
             }
         }
 
-        // 用量那一行：内容下面、动作行上面。只在**落定之后**画 —— 流式期间每一步的数字都在变，
-        // 跟着跳只会让人以为出错（同下面那个复制按钮的判据）。
+        // 用量与轮次/步数：客户端把它们画成消息动作行里的两个「药丸」（TurnUsagePanel / TimePill），
+        // 这里同样是一行药丸 —— 内容下面、动作行上面。只在**落定之后**画：流式期间每一步的数字
+        // 都在变，跟着跳只会让人以为出错（同下面那个复制按钮的判据）。
         message.usage?.takeIf { !message.isStreaming && revealComplete }?.let { usage ->
-            AgentUsageFooter(usage = usage, modifier = Modifier.padding(top = 4.dp))
+            AgentUsageActions(
+                usage = usage,
+                modifier = Modifier.padding(top = 2.dp).offset(x = -8.dp),
+            )
         }
 
         if (
