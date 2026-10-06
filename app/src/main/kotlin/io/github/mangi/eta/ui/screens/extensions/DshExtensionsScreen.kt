@@ -60,7 +60,6 @@ import io.github.mangi.eta.agent.dsh.DshLocalizedText
 import io.github.mangi.eta.agent.dsh.DshPresetGuides
 import io.github.mangi.eta.agent.dsh.DshPresetPlane
 import io.github.mangi.eta.agent.dsh.DshRowState
-import io.github.mangi.eta.agent.dsh.dshLivePresetProviders
 import io.github.mangi.eta.agent.dsh.dshModuleShortName
 import io.github.mangi.eta.agent.dsh.dshLiveRowKey
 import io.github.mangi.eta.ui.components.EtaPreference
@@ -455,11 +454,6 @@ private fun DshPluginSwitchRow(store: DshExtensionsStore, row: DshInventoryRow) 
             value = row.source,
         )
         row.readOnlyReason?.let { DshDetailNote(it) }
-        if (row.mentionedBy.isNotEmpty()) {
-            DshDetailNote(
-                stringResource(R.string.extensions_row_mentioned_by, row.mentionedBy.joinToString(", ")),
-            )
-        }
     }
 }
 
@@ -615,10 +609,6 @@ private fun LazyListScope.dshLiveSections(
         item(key = "presets_gap") { DshGroupGap() }
     }
 
-    // 哪些全局行也被某个预设按会话提供（官方口径：由预设提供的全局条目要列出对应预设）。
-    // 对齐逻辑（剥 `include:` 前缀、退回模块名）在数据层，见 [dshLivePresetProviders]。
-    val providedBy = dshLivePresetProviders(live.presets)
-
     // ---- 会话插件：**一个分组**，标题右边选"看哪个预设"（真机反馈："插件分类应该是会话插件
     // 右边选择标准模式还是 ptc"）。这些行由预设按会话组合，**只读**：它们没有补丁行 id，改不了。
     //
@@ -686,11 +676,7 @@ private fun LazyListScope.dshLiveSections(
                     isLast = index == entries.lastIndex,
                     hasLeading = true,
                 ) {
-                    DshLiveSwitchRow(
-                        store = store,
-                        entry = entry,
-                        providedBy = providedBy[dshLiveRowKey(entry.entryId, entry.moduleName)].orEmpty(),
-                    )
+                    DshLiveSwitchRow(store = store, entry = entry)
                 }
             }
         }
@@ -985,11 +971,7 @@ private fun DshPresetProvidedRow(row: DshLivePresetRow, presetId: String?) {
  * 缺哪一条都禁掉开关，并在说明里写清楚原因。
  */
 @Composable
-private fun DshLiveSwitchRow(
-    store: DshExtensionsStore,
-    entry: DshLiveEntry,
-    providedBy: List<String> = emptyList(),
-) {
+private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
     // 展开状态跟着这一条 Loader 条目走，不是跟着列表走。
     var expanded by remember(entry.entryId) { mutableStateOf(false) }
     val row = store.patchRowFor(entry)
@@ -1093,22 +1075,8 @@ private fun DshLiveSwitchRow(
         DshDetailLine(stringResource(R.string.extensions_detail_runtime_state), runtimeState)
         // 文件视图里有这一行才说得出"它来自哪一层"；没有就不编。
         row?.let { DshDetailLine(stringResource(R.string.extensions_detail_source), it.source) }
-        // 这一行同时被某个预设按会话提供（官方：由预设提供的全局条目要列出对应预设）。
-        // 只放详情里、不挂在行上：全局平面上"被预设提供"是常态（四份预设几乎覆盖整个平面），
-        // 挂到行上就是把一百多行重新糊一遍。
-        if (providedBy.isNotEmpty()) {
-            val context = LocalContext.current
-            val locale = LocalConfiguration.current.locales[0]
-            val names = providedBy.map { id -> DshPresetGuides.name(context, id, locale) ?: id }
-            DshDetailNote(stringResource(R.string.extensions_row_provided_by_preset, names.joinToString(", ")))
-        }
         // 下面这些以前贴在行上（于是每行都是两三行小字），现在只在展开时出现。
         blocked?.let { DshDetailNote(it) }
-        row?.takeIf { it.mentionedBy.isNotEmpty() }?.let {
-            DshDetailNote(
-                stringResource(R.string.extensions_row_mentioned_by, it.mentionedBy.joinToString(", ")),
-            )
-        }
         if (patchId != null && row == null) {
             DshDetailNote(stringResource(R.string.extensions_live_not_in_layer))
         }

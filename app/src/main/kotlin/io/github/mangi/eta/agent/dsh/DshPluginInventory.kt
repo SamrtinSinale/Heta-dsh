@@ -106,7 +106,7 @@ internal class DshPluginInventory(
                 problem = read.problem,
                 // 官方的口径：这一层的行里只要碰到管理模块，这一层就是"管理必需"，不许关。
                 readOnlyReason = if (read.rows.any { it.moduleName in PROTECTED_MODULES }) {
-                    "它里面有 dsh 的管理/入口模块，关掉运行时自己就起不来"
+                    "该包包含官方的管理模块（配置改坏了要靠它恢复）。"
                 } else {
                     null
                 },
@@ -191,15 +191,21 @@ internal class DshPluginInventory(
                 mentionedBy = it.mentionedBy.toList(),
                 // 用**合并后**的模块名判定：覆盖行常常不写 name，声明层那个才是真正在跑的模块。
                 readOnlyReason = when {
-                    // 措辞要把"它为什么是关的"和"这一页为什么改不了"分开说：这一类里有的行
-                    //（例如 hmr）本来就是 profile 自己关着的，而保护名单管的是"别在这一页关掉它"。
-                    // 真机反馈"被关掉了没法运行我还没法控制"，就是把两件事读成了一句。
+                    // Heta 自己加的那两个（dsh-acp / dsh-acp-app）理由最硬：它们是 App 跟 dsh
+                    // 说话的入口，关掉下一次对话就是 initialize 失败 —— "下一次对话将无法启动"
+                    // 这句对它们成立。
+                    it.moduleName in HETA_ENTRY_MODULES ->
+                        "该项是 Heta 与 dsh 之间的通信入口；禁用后下一次对话将无法启动。"
+                    // 官方那 16 个既不能写成"禁用后运行时起不来"，也**不能**写成"不可关闭"：
+                    // 它们保的是**可恢复性**（把别的插件关坏了之后，还能把配置改回来），而其中有的
+                    //（hmr）本来就是 profile 自己关着的 —— 真机反馈连着两次抓住这两句：
+                    // "它已经默认关闭了，不是说运行时无法启动吗"、"它默认也是关闭的，为什么是不可关闭"。
+                    // 所以只说这一页的事实：这一类不给开关。
                     it.moduleName in PROTECTED_MODULES ->
-                        "官方把它列为管理/入口模块（关掉运行时自己就起不来），这一页不给开关；" +
-                            "它现在是开是关，由 profile 补丁层决定"
-                    it.moduleName == null -> "这一行没有模块名，定位不到它是哪个插件"
-                    // 放在最后：官方那 8 个管理模块属于"关掉就起不来"，理由更硬，先报那一个。
-                    it.patchId in presetManagedRowIds -> "这一行由预设统一管理，不能单独开关"
+                        "该项是官方的管理模块（配置改坏了要靠它恢复），因此此处不提供开关。"
+                    it.moduleName == null -> "该项缺少模块名，无法定位到具体插件。"
+                    // 放最后：预设管理的行只是"这一页不给开关"，比上面那两类弱。
+                    it.patchId in presetManagedRowIds -> "该项由预设统一管理，此处不提供单独开关。"
                     else -> null
                 },
             )
@@ -320,6 +326,18 @@ internal data class DshInventoryRow(
  * 下一次对话就是 `initialize` 失败 / protocol-eof（这个 App 自己还能改回来，但会先炸一次，
  * 而"炸一次"正是我们要防的）。
  */
+/**
+ * Heta 自己加进保护名单的两个模块。
+ *
+ * 它们不在官方那份名单里：`dsh-acp-app` / `dsh-acp` 是 App 跟 dsh 说话的**唯一入口** ——
+ * 关掉它，下一次对话就是 `initialize` 失败 / `protocol-eof`。理由和官方那批不同，所以单独放一份，
+ * 界面上也分开说（官方那批保的是"把配置改回来"的能力，不是"起不来"）。
+ */
+private val HETA_ENTRY_MODULES = setOf(
+    "@deepseek-ai/dsh-acp-app",
+    "@deepseek-ai/dsh-acp",
+)
+
 private val PROTECTED_MODULES = setOf(
     "@deepseek-ai/dsh-plugin-manager",
     "@deepseek-ai/cordis-plugin-loader",
