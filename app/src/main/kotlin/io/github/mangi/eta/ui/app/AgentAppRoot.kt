@@ -49,6 +49,8 @@ import io.github.mangi.eta.agent.device.DeviceLocationProvider
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.dsh.DshSlashCommand
 import io.github.mangi.eta.agent.dsh.DshSlashCommands
+import io.github.mangi.eta.agent.dsh.DshInventoryProbe
+import io.github.mangi.eta.agent.dsh.DshLiveInventoryCache
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.AppearanceSettingsScreen
@@ -115,6 +117,14 @@ fun AgentAppRoot(
     val resources = LocalResources.current
     val uiScope = rememberCoroutineScope()
     val backStack = rememberNavBackStack<AppRoute>(AppRoute.Home)
+    // 活清单**预热**：那份数据只能靠"真起一次 dsh"拿到（实测 ~27 秒），而扩展页要它才画得出
+    // 插件行。放在 App 起来时后台跑一次（缓存新鲜就什么都不做）—— 用户走到「设置 → 扩展」时
+    // 通常已经好了，不必在那儿干等。这是唯一一处与页面无关的探针，其余入口都在扩展页自己那边
+    //（见 DshExtensionsStore 的类头）。
+    LaunchedEffect(Unit) {
+        if (!DshLiveInventoryCache.isStale()) return@LaunchedEffect
+        withContext(Dispatchers.IO) { DshLiveInventoryCache.put(DshInventoryProbe.read(context)) }
+    }
     LaunchedEffect(openSpeechSettings) {
         if (openSpeechSettings) {
             if (backStack.lastOrNull() != AppRoute.SpeechSettings) backStack.add(AppRoute.SpeechSettings)
