@@ -41,6 +41,8 @@ internal data class DshRuntimeConfig(
     val presetJoinPlugin: String = "",
     /** [DshPresetPlane.STATUS_ASSET] 的全文；空串表示这一轮不挂状态出口插件。 */
     val statusPlugin: String = "",
+    /** [DshPresetPlane.USAGE_ASSET] 的全文；空串表示这一轮不挂用量出口插件。 */
+    val usagePlugin: String = "",
 ) {
     /**
      * ACP 进程自身的宿主工作目录。
@@ -240,6 +242,7 @@ internal data class DshRuntimeConfig(
     private fun writeJoinPlugin() {
         writePlugin(presetJoinPlugin, JOIN_RELATIVE, "preset join plugin")
         writePlugin(statusPlugin, STATUS_RELATIVE, "status plugin")
+        writePlugin(usagePlugin, USAGE_RELATIVE, "usage plugin")
     }
 
     /** 一个插件文件：写进 runtime root，权限 0644（dsh 在 chroot 里以 root 读它）。 */
@@ -424,6 +427,7 @@ internal data class DshRuntimeConfig(
         /** join 插件与覆盖层必须同目录（覆盖层里是相对名）。 */
         private const val JOIN_RELATIVE = "opt/dsh/heta-preset-join.mjs"
         private const val STATUS_RELATIVE = "opt/dsh/heta-status.mjs"
+        private const val USAGE_RELATIVE = "opt/dsh/heta-usage.mjs"
         private const val OVERLAY_IN_ROOT = "/opt/dsh/heta-run-overlay.patch.yml"
         private const val CREDENTIALS_RELATIVE = "opt/dsh/heta-run-env.sh"
         /** dsh 自己的会话目录；App 侧那份有 128 条上限，这份没有，只能按年龄清。 */
@@ -480,6 +484,7 @@ internal data class DshRuntimeConfig(
                 ),
                 presetJoinPlugin = DshPresetPlane.joinPluginFor(context),
                 statusPlugin = DshPresetPlane.statusPluginFor(context),
+                usagePlugin = DshPresetPlane.usagePluginFor(context),
             )
         }
 

@@ -914,6 +914,12 @@ internal object AgentRuntimeWire {
         usage.outputTokens?.let { putInt("usage_output", it) }
         usage.reasoningTokens?.let { putInt("usage_reasoning", it) }
         usage.cachedTokens?.let { putInt("usage_cache", it) }
+        // dsh 那条会话才有的三项（缓存写 / 模型报的总量 / 轮次与步数）：原生那条路是 null，
+        // 所以只在有值时放进 Bundle —— 缺键与"值是 0"在界面上是两件事。
+        usage.cacheWriteTokens?.let { putInt("usage_cache_write", it) }
+        usage.totalTokens?.let { putInt("usage_total", it) }
+        usage.turn?.let { putInt("usage_turn", it) }
+        usage.steps?.let { putInt("usage_steps", it) }
     }
 
     private fun Bundle.getTokenUsage(): AgentTokenUsage =
@@ -923,6 +929,10 @@ internal object AgentRuntimeWire {
             outputTokens = optionalInt("usage_output"),
             reasoningTokens = optionalInt("usage_reasoning"),
             cachedTokens = optionalInt("usage_cache"),
+            cacheWriteTokens = optionalInt("usage_cache_write"),
+            totalTokens = optionalInt("usage_total"),
+            turn = optionalInt("usage_turn"),
+            steps = optionalInt("usage_steps"),
         )
 
     private fun decodeCustomHeaders(raw: String?): List<CustomHeader> =

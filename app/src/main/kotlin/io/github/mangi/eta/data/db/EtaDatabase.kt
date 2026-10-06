@@ -26,7 +26,7 @@ import androidx.room.migration.Migration
         CharacterEntity::class,
         UserPersonaEntity::class,
     ],
-    version = 21,
+    version = 22,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -64,6 +64,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_18_19,
                         MIGRATION_19_20,
                         MIGRATION_20_21,
+                        MIGRATION_21_22,
                     )
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) { createTextChunkCleanup(db) }
@@ -79,6 +80,18 @@ internal abstract class EtaDatabase : RoomDatabase() {
             synchronized(this) {
                 instance?.close()
                 instance = null
+            }
+        }
+
+        /**
+         * 21 → 22：回复下面那一行用量要能活过重启。
+         *
+         * 四个都是可空的：老行没有这些数（原生那条路也报不出轮次 / 步数 / 缓存写），
+         * NULL 才是"没这个数"的诚实表示。
+         */
+        internal val MIGRATION_21_22 = Migration(21, 22) { database ->
+            listOf("cache_write_tokens", "total_tokens", "turn", "steps").forEach { column ->
+                database.execSQL("ALTER TABLE conversation_messages ADD COLUMN $column INTEGER")
             }
         }
 

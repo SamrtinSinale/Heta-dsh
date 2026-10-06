@@ -604,6 +604,12 @@ private fun AgentMessageBlock(
             }
         }
 
+        // 用量那一行：内容下面、动作行上面。只在**落定之后**画 —— 流式期间每一步的数字都在变，
+        // 跟着跳只会让人以为出错（同下面那个复制按钮的判据）。
+        message.usage?.takeIf { !message.isStreaming && revealComplete }?.let { usage ->
+            AgentUsageFooter(usage = usage, modifier = Modifier.padding(top = 4.dp))
+        }
+
         if (
             showCopyAction &&
             !message.isStreaming &&

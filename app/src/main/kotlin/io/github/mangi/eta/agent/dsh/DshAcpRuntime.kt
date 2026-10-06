@@ -67,6 +67,10 @@ internal class DshAcpRuntime(
         val runId = session.runId
         var round = 0
         var contentChars = 0
+        // 最后一次 usage_update 报的上下文占用量（用量文件里没有这个数，它是 ACP 独有的）。
+        var contextUsed: Int? = null
+        // 本回合开始的时刻：用量文件里只认这之后写过的轮次（见 [DshUsageReader.latestTurn]）。
+        val runStartedAt = System.currentTimeMillis()
         // 这一轮做过什么仍要回写成 Eta 的历史消息：UI 与 checkpoint 只认 Eta 的会话，
         // dsh 自己的会话是"另一份账"（用于续接上下文），两边都要有。
         val transcript = DshTranscriptBuilder(runId)
@@ -213,12 +217,14 @@ internal class DshAcpRuntime(
                                     "context window mismatch: dsh=$size, model config=$configured",
                                 )
                             }
+                            // 这里只报上下文占用量：这一轮的账（cache / 输入 / 输出 / 轮次 / 步数）
+                            // 要等**回合收尾**再读文件 —— 为什么不能在这里读，见
+                            // [emitTurnUsage] 的说明。
+                            contextUsed = if (used >= 0) used else null
                             session.emit(
                                 AgentEvent.UsageReceived(
                                     round = round,
-                                    usage = AgentTokenUsage(
-                                        contextTokens = if (used >= 0) used else null,
-                                    ),
+                                    usage = AgentTokenUsage(contextTokens = contextUsed),
                                 )
                             )
                         }
@@ -314,6 +320,8 @@ internal class DshAcpRuntime(
                 )
                 session.emit(AgentEvent.RoundStarted(round = round, messageCount = 1))
                 promptWithRetry(client, dshSessionId, promptText, images)
+                // 回合收尾了，这一轮最终的账这时才读得到（见 [emitTurnUsage]）。
+                emitTurnUsage(session, round, dshSessionId, contextUsed, runStartedAt)
             }
             closeOpenBlock()
             val transcriptMessages = transcript.build()
@@ -350,6 +358,46 @@ internal class DshAcpRuntime(
      * 网关偶发 502 / 连接被重置时，dsh 只发一次请求就放弃；这里补上与 App 内 Agent Loop
      * 一致的重试。只在"请求根本没建立"这类传输层错误上重试，避免重放已经执行过的工具。
      */
+    /**
+     * 把**这一轮**的账补进事件流：token / cache / 轮次 / 步数。
+     *
+     * 为什么不在 `usage_update` 那一刻读（那里只有上下文占用量）：
+     *   ① 插件与 dsh-acp 是**同一个事件**（`assistant/message`）的两个监听者，谁先跑没有保证 ——
+     *      那一刻读到的文件可能还差最后一步；
+     *   ② 每个回合是一个**新进程**（ACP 这条路就是一轮一进程），插件的内存是空的，文件里在那一刻
+     *      还是**上一轮**那份 —— 读了就等于拿上一轮的账冒充这一轮。
+     * 所以：等 prompt 返回（回合已收尾）再读，并且只认 `at >= 本回合开始时刻` 的轮次。
+     *
+     * 读的是 runtime 目录里的**共享**那份（插件写成 0644、目录 0755），普通文件读、毫秒级 ——
+     * 这里在 ACP 的调用线程上，绝不走 su（那条路最坏能卡 15 秒）。
+     */
+    private fun emitTurnUsage(
+        session: AgentRuntimeSession,
+        round: Int,
+        sessionId: String,
+        contextTokens: Int?,
+        notBefore: Long,
+    ) {
+        val turn = runCatching { DshUsageReader.latestTurn(config.rootfsPath, sessionId, notBefore) }
+            .getOrNull() ?: return
+        session.emit(
+            AgentEvent.UsageReceived(
+                round = round,
+                usage = AgentTokenUsage(
+                    contextTokens = contextTokens,
+                    inputTokens = turn.inputTokens,
+                    outputTokens = turn.outputTokens,
+                    cachedTokens = turn.cacheReadTokens,
+                    cacheWriteTokens = turn.cacheWriteTokens,
+                    reasoningTokens = turn.reasoningTokens,
+                    totalTokens = turn.totalTokens,
+                    turn = turn.turn,
+                    steps = turn.steps,
+                ),
+            )
+        )
+    }
+
     private suspend fun promptWithRetry(
         client: DshAcpClient,
         sessionId: String,

@@ -69,6 +69,7 @@ class DshRuntimeConfigOverlayTest {
             // 状态出口插件也要写进 rootfs：不然端到端里那条 insert 行指向一个不存在的文件，
             // 就永远验不到「会话进程写清单」这条路。
             statusPlugin = asset(DshPresetPlane.STATUS_ASSET),
+            usagePlugin = asset(DshPresetPlane.USAGE_ASSET),
         )
     }
 
@@ -341,6 +342,7 @@ class DshRuntimeConfigOverlayTest {
             // 状态出口插件也要写进 rootfs：不然端到端里那条 insert 行指向一个不存在的文件，
             // 就永远验不到「会话进程写清单」这条路。
             statusPlugin = asset(DshPresetPlane.STATUS_ASSET),
+            usagePlugin = asset(DshPresetPlane.USAGE_ASSET),
         )
         val file = java.io.File("build/dsh-e2e-overlay-modes.patch.yml")
         file.parentFile?.mkdirs()

@@ -216,6 +216,10 @@ internal object AgentConversationStore {
                         outputTokens = usage?.outputTokens,
                         reasoningTokens = usage?.reasoningTokens,
                         cachedTokens = usage?.cachedTokens,
+                        cacheWriteTokens = usage?.cacheWriteTokens,
+                        totalTokens = usage?.totalTokens,
+                        turn = usage?.turn,
+                        steps = usage?.steps,
                     )
                 }
             }
@@ -285,6 +289,10 @@ internal object AgentConversationStore {
                     outputTokens = outputTokens,
                     reasoningTokens = reasoningTokens,
                     cachedTokens = cachedTokens,
+                    cacheWriteTokens = cacheWriteTokens,
+                    totalTokens = totalTokens,
+                    turn = turn,
+                    steps = steps,
                 ).takeUnless { it.isEmpty },
             )
 

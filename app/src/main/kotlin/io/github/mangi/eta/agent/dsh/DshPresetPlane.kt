@@ -63,6 +63,17 @@ internal object DshPresetPlane {
      */
     const val STATUS_ASSET = "heta-status.mjs"
 
+    /**
+     * 用量出口插件：把**每一轮**的账（输入 / 输出 / cache 读 / cache 写 / 轮次 / 步数）写成
+     * `$DSH_HOME/heta-usage.json`。
+     *
+     * 为什么要有它：ACP 那条通道的用量出口只有 `usage_update` —— 值是
+     * `tokenMeter.measure(session).totalTokens`（**估算的上下文压力**）与窗口大小，cache 与
+     * 输入输出一个字段都没有。那份账只在会话进程里（`session/event` 的 `assistant/message`
+     * 带 `usage`），顺手写一份文件最省事。见 heta-usage.mjs。
+     */
+    const val USAGE_ASSET = "heta-usage.mjs"
+
     private const val ASSET_DIR = "heta-presets"
 
     /**
@@ -216,6 +227,9 @@ internal object DshPresetPlane {
     /** 状态出口插件的全文（同 [joinPlugin]，相对名 `./heta-status.mjs`）。 */
     fun statusPlugin(read: (String) -> String): String = read(STATUS_ASSET)
 
+    /** 用量出口插件的全文（同 [joinPlugin]，相对名 `./heta-usage.mjs`）。 */
+    fun usagePlugin(read: (String) -> String): String = read(USAGE_ASSET)
+
     /**
      * 被预设接管的行 id。
      *
@@ -263,6 +277,13 @@ internal object DshPresetPlane {
     fun statusPluginFor(context: Context): String =
         runCatching { statusPlugin(reader(context)) }.getOrElse { throwable ->
             Log.w(TAG, "status 插件读不出来", throwable)
+            ""
+        }
+
+    /** 用量出口插件全文；读不出来返回空串（那一轮没有用量显示，不影响会话）。 */
+    fun usagePluginFor(context: Context): String =
+        runCatching { usagePlugin(reader(context)) }.getOrElse { throwable ->
+            Log.w(TAG, "usage 插件读不出来", throwable)
             ""
         }
 

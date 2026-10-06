@@ -123,6 +123,12 @@ mkdir -p "$ROOT/opt/dsh"
 cp -f "$STATUS_PLUGIN" "$ROOT/opt/dsh/heta-status.mjs"
 chmod 644 "$ROOT/opt/dsh/heta-status.mjs"
 
+# 用量出口插件同理（第 ⑬ 步断言它写出来的文件）。
+USAGE_PLUGIN="$REPO/app/src/main/assets/heta-usage.mjs"
+[ -f "$USAGE_PLUGIN" ] || { echo "FAIL: 缺少用量插件资产 $USAGE_PLUGIN"; exit 1; }
+cp -f "$USAGE_PLUGIN" "$ROOT/opt/dsh/heta-usage.mjs"
+chmod 644 "$ROOT/opt/dsh/heta-usage.mjs"
+
 echo "⑤ 跑一个真回合（initialize → session/new → prompt → 工具调用）"
 # 用 unshare 起一个假 root 命名空间：chroot、/dev、/proc 和 binfmt 都在里面做，不碰宿主。
 #
@@ -465,10 +471,48 @@ else
 fi
 
 echo
+# ⑬ 用量出口插件：每一轮的账（轮次 / 步数 / token / cache）也要写成文件 —— App 在回复下面
+#    显示的就是它。这里断言：文件在、协议前缀对、至少有一轮、且轮次是正数。
+#    注意这一轮跑的是**假 LLM**，它不一定报 usage：所以 token 数字不在这里断言（那属于模型的事），
+#    这里钉的是"轮次 / 步数这条路通"。
+USAGE_FILE="$ROOT/root/.dsh/heta-usage.json"
+usage_ok=0
+if [ -f "$USAGE_FILE" ]; then
+  usage_ok="$(python3 - "$USAGE_FILE" <<'PY'
+import json, sys
+marker = "HETA-USAGE-JSON:"
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError:
+    print(0); raise SystemExit
+if marker not in text:
+    print(0); raise SystemExit
+try:
+    data = json.loads(text.split(marker, 1)[1].splitlines()[0])
+except ValueError:
+    print(0); raise SystemExit
+turns = [t for s in (data.get("sessions") or []) for t in (s.get("turns") or [])]
+print(1 if turns and all((t.get("turn") or 0) > 0 for t in turns) else 0)
+PY
+)"
+  echo "⑬ 用量出口插件：$USAGE_FILE（$(wc -c < "$USAGE_FILE") 字节，断言=${usage_ok:-0}）"
+else
+  echo "⑬ 用量出口插件：$USAGE_FILE 不存在 ✗"
+fi
+
+SHARED_USAGE="$ROOT/opt/dsh/heta-usage.json"
+if [ -f "$SHARED_USAGE" ] && head -c 24 "$SHARED_USAGE" | grep -q "HETA-USAGE-JSON:"; then
+  echo "⑬b runtime 目录那一份：$SHARED_USAGE（$(wc -c < "$SHARED_USAGE") 字节）✓"
+else
+  echo "⑬b runtime 目录那一份不存在或没有协议前缀 ✗（$SHARED_USAGE）"
+  usage_ok=0
+fi
+
+echo
 if [ "$acp_status" -eq 0 ] && [ "$round2_status" -eq 0 ] && [ "$file_ok" -eq 1 ] \
    && [ "$cred_ok" -eq 1 ] && [ "$history_ok" -eq 1 ] && [ "$round3_status" -eq 0 ] \
-   && [ "$mode_ok" -eq 1 ] && [ "${inv_ok:-0}" -eq 1 ]; then
-  echo "====> 端到端通过：工具真执行、回合正常收尾、续接后人格已刷新且历史原样、计划与目标模式都真的生效、活清单被写出来"
+   && [ "$mode_ok" -eq 1 ] && [ "${inv_ok:-0}" -eq 1 ] && [ "${usage_ok:-0}" -eq 1 ]; then
+  echo "====> 端到端通过：工具真执行、回合正常收尾、续接后人格已刷新且历史原样、计划与目标模式都真的生效、活清单与用量都被写出来"
   exit 0
 fi
 echo "====> 端到端失败（首回合=$acp_status 续接=$round2_status 文件=$file_ok 凭据=$cred_ok 续接语义=$history_ok 模式回合=$round3_status 模式=$mode_ok 活清单=${inv_ok:-0}）"

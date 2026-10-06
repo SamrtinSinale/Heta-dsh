@@ -1221,6 +1221,13 @@
   <string name="data_backup_file_open_failed">Unable to open the selected file</string>
   <string name="context_compaction">Context compaction</string>
   <string name="context_compact_action">Compact context</string>
+  <string name="usage_footer_turn">Turn %1$d</string>
+  <string name="usage_footer_steps">Steps %1$d</string>
+  <string name="usage_footer_input">In %1$s</string>
+  <string name="usage_footer_output">Out %1$s</string>
+  <string name="usage_footer_cache_read">Cache read %1$s</string>
+  <string name="usage_footer_cache_write">Cache write %1$s</string>
+  <string name="usage_footer_total">Total %1$s</string>
   <string name="context_usage_estimated">%1$s\nEstimated after compaction</string>
   <string name="voice_audio_permission">请在 Heta 应用权限中允许麦克风，然后重新唤醒；点击麦克风可打开设置</string>
   <string name="voice_no_speech">没有听清，请点击麦克风重试，或改用键盘输入</string>

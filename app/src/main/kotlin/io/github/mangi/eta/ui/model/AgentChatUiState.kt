@@ -88,14 +88,31 @@ data class TokenUsageUi(
     val inputTokens: Int? = null,
     val outputTokens: Int? = null,
     val reasoningTokens: Int? = null,
+    /** 缓存**命中**（读）的 token。 */
     val cachedTokens: Int? = null,
+    /**
+     * 缓存**写入**的 token（dsh 那条会话报得出来；原生那条路是 null）。
+     *
+     * 与 [cachedTokens] 分开是有意的：写缓存也要钱（有的供应商比读贵得多），合成一个数就看不出
+     * "这一轮到底是命中还是重建了缓存"。
+     */
+    val cacheWriteTokens: Int? = null,
+    /** 模型报的整轮总量；与"输入 + 输出"不一致时界面才单独写出来。 */
+    val totalTokens: Int? = null,
+    /** dsh 的轮次与步数（原生那条路没有这两个数，界面就不写这两段）。 */
+    val turn: Int? = null,
+    val steps: Int? = null,
 ) {
     val isEmpty: Boolean
         get() = contextTokens == null &&
             inputTokens == null &&
             outputTokens == null &&
             reasoningTokens == null &&
-            cachedTokens == null
+            cachedTokens == null &&
+            cacheWriteTokens == null &&
+            totalTokens == null &&
+            turn == null &&
+            steps == null
 }
 
 @Immutable

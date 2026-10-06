@@ -32,6 +32,13 @@
     - id: heta-status
       name: ./heta-status.mjs
 
+# Heta 的用量出口：会话进程把**每一轮**的账（输入 / 输出 / cache 读 / cache 写 / 轮次 / 步数）
+# 写成文件，App 读它来在每条回复下面写用量。ACP 那条通道的用量出口只有 `usage_update`，带的
+# 是上下文占用量与窗口，没有这些细分。见 heta-usage.mjs。
+- insert:
+    - id: heta-usage
+      name: ./heta-usage.mjs
+
 # cordisInspect 的两个 Host 行 —— 逐字照抄 @deepseek-ai/dsh-web-app 的 cordis.patch.yml:150-157。
 #
 # 少了它们，`cordis`（创造模式）预设里的 `tool-cordis` 行会一直
