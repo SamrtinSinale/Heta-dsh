@@ -1361,7 +1361,6 @@
   <string name="extensions_live_loading">正在讀取外掛狀態…</string>
   <string name="extensions_live_unavailable">沒讀到實際執行狀態（%1$s），先顯示設定檔。</string>
   <string name="extensions_live_note">這裡的「已停用」只是臨時清單，真實對話時開著。</string>
-  <string name="extensions_group_live">外掛（實際執行）</string>
   <string name="extensions_live_summary">%1$s · %2$s</string>
   <string name="extensions_run_phase_none">沒在執行</string>
   <string name="extensions_run_phase_pending">等待中</string>
@@ -1386,6 +1385,12 @@
   <string name="extensions_preset_set_default">設為新任務預設</string>
   <string name="extensions_preset_broken">載入失敗</string>
   <string name="extensions_preset_broken_summary">這個預設現在載入不了：%1$s</string>
+  <string name="extensions_group_global">全域外掛</string>
+  <string name="extensions_preset_group_note">這些行由這個預設按工作階段提供，由預設統一管理，這裡不能單獨開關。</string>
+  <string name="extensions_preset_row_readonly">這一行由預設統一管理，不能單獨開關。</string>
+  <string name="extensions_row_provided_by_preset">由預設提供：%1$s</string>
+  <string name="extensions_group_expand">展開</string>
+  <string name="extensions_group_collapse">收合</string>
   <string name="action_export">匯出</string>
   <string name="conversation_exported">已匯出</string>
   <string name="conversation_export_failed">匯出失敗</string>

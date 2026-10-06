@@ -1373,7 +1373,6 @@
   <string name="extensions_live_loading">正在读取插件状态…</string>
   <string name="extensions_live_unavailable">没读到实际运行状态（%1$s），先显示配置文件。</string>
   <string name="extensions_live_note">这里的“已禁用”只是临时清单，真实对话时开着。</string>
-  <string name="extensions_group_live">插件（实际运行）</string>
   <string name="extensions_live_summary">%1$s · %2$s</string>
   <string name="extensions_run_phase_none">没在运行</string>
   <string name="extensions_run_phase_pending">等待中</string>
@@ -1398,4 +1397,10 @@
   <string name="extensions_preset_set_default">设为新任务默认</string>
   <string name="extensions_preset_broken">加载失败</string>
   <string name="extensions_preset_broken_summary">这个预设现在加载不了：%1$s</string>
+  <string name="extensions_group_global">全局插件</string>
+  <string name="extensions_preset_group_note">这些行由这个预设按会话提供，由预设统一管理，这里不能单独开关。</string>
+  <string name="extensions_preset_row_readonly">这一行由预设统一管理，不能单独开关。</string>
+  <string name="extensions_row_provided_by_preset">由预设提供：%1$s</string>
+  <string name="extensions_group_expand">展开</string>
+  <string name="extensions_group_collapse">收起</string>
 </resources>

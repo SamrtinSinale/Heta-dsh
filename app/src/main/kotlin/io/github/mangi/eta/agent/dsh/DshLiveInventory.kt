@@ -224,3 +224,36 @@ internal object DshLiveInventoryCodec {
     private fun describe(error: Throwable): String =
         error.message ?: error::class.java.simpleName
 }
+
+/**
+ * 组合 id / 补丁行 id 的归一化 —— 用来把"预设组合里的行"与"全局清单里的行"对上。
+ *
+ * 为什么不能直接比：官方投影里组合生成的 id 常带 `include:` 前缀（官方界面显示时才把它省掉），
+ * 而全局条目那边不一定带；大小写也不保证一致。所以两边都剥前缀、统一小写再比。没有 id 才退回
+ * 模块名 —— 那是两边都有的字段。
+ */
+internal fun dshLiveRowKey(entryId: String?, moduleName: String?): String {
+    val raw = entryId?.takeIf { it.isNotBlank() } ?: moduleName.orEmpty()
+    return raw.removePrefix("include:").lowercase()
+}
+
+/**
+ * 哪些全局条目被哪些预设**按会话**提供（键 = [dshLiveRowKey]）。
+ *
+ * 官方那份只读清单里，"由预设提供的全局条目"要列出对应预设（`ui-settings-plugin-inventory`：
+ * 被预设提供的全局行说明它由 Agent 预设按会话提供、列出启用它的预设）。这里把预设 roster 反查成
+ * 一张表，界面拿它给全局行挂一句说明。
+ *
+ * 同一个预设重复给同一行只记一次（组合里同一模块可能出现多次）；预设按 roster 顺序排，稳定。
+ */
+internal fun dshLivePresetProviders(presets: List<DshLivePreset>): Map<String, List<String>> {
+    val providers = LinkedHashMap<String, MutableList<String>>()
+    presets.forEach { preset ->
+        preset.rows.forEach { row ->
+            val key = dshLiveRowKey(row.entryId, row.moduleName)
+            val list = providers.getOrPut(key) { ArrayList(2) }
+            if (!list.contains(preset.id)) list += preset.id
+        }
+    }
+    return providers
+}
