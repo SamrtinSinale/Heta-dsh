@@ -104,10 +104,10 @@ internal fun DshExtensionsScreen(
     val store = remember { DshExtensionsStore(context, scope) }
     // 搜索词只活在这一页里：按模块名 / 行编号做本地过滤，不碰清单、也不重新探针。
     var query by remember { mutableStateOf("") }
-    // 两个分组的折叠：会话插件那组（只读清单）与全局那组（开关在那里）。默认都展开 ——
-    // 手机屏上先折一层就等于把内容藏起来；点标题能收。搜索时两组都强制展开（官方口径）。
-    var sessionExpanded by remember { mutableStateOf(true) }
-    var globalExpanded by remember { mutableStateOf(true) }
+    // 两个分组**默认都收起**（真机反馈原话："会话插件和全局插件默认是收纳的不是展开的"）。
+    // 行数写在标题上，点标题展开；搜索时两组都强制展开（官方口径）。
+    var sessionExpanded by remember { mutableStateOf(false) }
+    var globalExpanded by remember { mutableStateOf(false) }
     // 会话插件那组**在看哪个预设**（null = 跟默认预设走）。它只决定这一页显示什么，
     // 不改任何设置 —— 真机反馈："插件分类应该是会话插件右边选择标准模式还是 ptc"。
     var viewedPresetId by remember { mutableStateOf<String?>(null) }
@@ -245,7 +245,10 @@ internal fun DshExtensionsScreen(
         // 数据层只报"清单里选中的"和"真读得出来的"包；选中的坏包也要列 —— 原因要看得见，
         // 也得能把它关掉（关掉正是那种坏清单的修法）。
         // 插件包没有模块名，搜索命中不了它：搜索时这一整段先收起来。
-        val bundles = inventory.bundles.filter { it.isBundle || it.selected }
+        // 插件包（bundle）那一段只在**真有能动的**时候才画：真机反馈连着问过两次
+        //（"这个插件包有必要显示吗" / "有啥用"）—— 随包那两个（dsh-base 94 行、dsh-acp-app 5 行）
+        // 都是管理/入口模块，开关本来就是灰的，列出来只是噪声。将来某一层真能开关，它自己会回来。
+        val bundles = inventory.bundles.filter { (it.isBundle || it.selected) && it.readOnlyReason == null }
         if (bundles.isNotEmpty() && !searching) {
             item(key = "bundles_title") {
                 EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_bundles))

@@ -191,7 +191,12 @@ internal class DshPluginInventory(
                 mentionedBy = it.mentionedBy.toList(),
                 // 用**合并后**的模块名判定：覆盖行常常不写 name，声明层那个才是真正在跑的模块。
                 readOnlyReason = when {
-                    it.moduleName in PROTECTED_MODULES -> "dsh 的管理/入口模块，关掉运行时自己就起不来"
+                    // 措辞要把"它为什么是关的"和"这一页为什么改不了"分开说：这一类里有的行
+                    //（例如 hmr）本来就是 profile 自己关着的，而保护名单管的是"别在这一页关掉它"。
+                    // 真机反馈"被关掉了没法运行我还没法控制"，就是把两件事读成了一句。
+                    it.moduleName in PROTECTED_MODULES ->
+                        "官方把它列为管理/入口模块（关掉运行时自己就起不来），这一页不给开关；" +
+                            "它现在是开是关，由 profile 补丁层决定"
                     it.moduleName == null -> "这一行没有模块名，定位不到它是哪个插件"
                     // 放在最后：官方那 8 个管理模块属于"关掉就起不来"，理由更硬，先报那一个。
                     it.patchId in presetManagedRowIds -> "这一行由预设统一管理，不能单独开关"
