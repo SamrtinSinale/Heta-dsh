@@ -39,6 +39,8 @@ internal data class DshRuntimeConfig(
     val presetPlane: String = "",
     /** join 插件全文（写进 root，覆盖层里用相对名引用）。空串表示不装那一跳。 */
     val presetJoinPlugin: String = "",
+    /** [DshPresetPlane.STATUS_ASSET] 的全文；空串表示这一轮不挂状态出口插件。 */
+    val statusPlugin: String = "",
 ) {
     /**
      * ACP 进程自身的宿主工作目录。
@@ -236,17 +238,23 @@ internal data class DshRuntimeConfig(
      * （join 插件不在，注册表仍在，新会话就不绑定任何预设）。
      */
     private fun writeJoinPlugin() {
-        if (presetJoinPlugin.isBlank()) return
+        writePlugin(presetJoinPlugin, JOIN_RELATIVE, "preset join plugin")
+        writePlugin(statusPlugin, STATUS_RELATIVE, "status plugin")
+    }
+
+    /** 一个插件文件：写进 runtime root，权限 0644（dsh 在 chroot 里以 root 读它）。 */
+    private fun writePlugin(source: String, relative: String, what: String) {
+        if (source.isBlank()) return
         runCatching {
-            val file = File(rootfsPath, JOIN_RELATIVE)
+            val file = File(rootfsPath, relative)
             file.parentFile?.mkdirs()
-            file.writeText(presetJoinPlugin)
+            file.writeText(source)
             file.setReadable(true, false)
             file.setWritable(false, false)
             file.setWritable(true, true)
             file.setExecutable(false, false)
         }.getOrElse { throwable ->
-            Log.w(TAG, "preset join plugin write failed", throwable)
+            Log.w(TAG, "$what write failed", throwable)
         }
     }
 
@@ -415,6 +423,7 @@ internal data class DshRuntimeConfig(
         private const val OVERLAY_RELATIVE = "opt/dsh/heta-run-overlay.patch.yml"
         /** join 插件与覆盖层必须同目录（覆盖层里是相对名）。 */
         private const val JOIN_RELATIVE = "opt/dsh/heta-preset-join.mjs"
+        private const val STATUS_RELATIVE = "opt/dsh/heta-status.mjs"
         private const val OVERLAY_IN_ROOT = "/opt/dsh/heta-run-overlay.patch.yml"
         private const val CREDENTIALS_RELATIVE = "opt/dsh/heta-run-env.sh"
         /** dsh 自己的会话目录；App 侧那份有 128 条上限，这份没有，只能按年龄清。 */
@@ -470,6 +479,7 @@ internal data class DshRuntimeConfig(
                     DshSessionModeStore.read(context, sessionKey),
                 ),
                 presetJoinPlugin = DshPresetPlane.joinPluginFor(context),
+                statusPlugin = DshPresetPlane.statusPluginFor(context),
             )
         }
 

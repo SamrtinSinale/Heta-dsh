@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.dsh
 import android.content.Context
 import android.util.Log
 import java.io.File
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
@@ -66,8 +67,71 @@ internal object DshInventoryProbe {
 
     private const val SU = "su"
 
+    /**
+     * 会话进程写出来的那份清单：`$DSH_HOME/heta-inventory.json`（chroot 里是 `/root/.dsh`，
+     * 宿主上就是 runtime root 下的 `root/.dsh`）。
+     *
+     * 读它只要一次 `su -c cat`（毫秒级），而真起一个 dsh 是 ~27 秒（实测，arm64 + qemu）——
+     * App 每次重启后第一次点开扩展页等的那一下就是后者。
+     */
+    private const val STATUS_RELATIVE = "root/.dsh/heta-inventory.json"
+
+    /** 读状态文件给多久：它只是 `cat` 一个小文件，超时只可能是 su 卡在授权。 */
+    private const val STATUS_TIMEOUT_MS = 15_000L
+
+    /**
+     * 状态文件多久算"还新鲜"。
+     *
+     * 会话结束之后文件还在，里面的**运行状态**（哪个插件在跑）已经过期了。10 分钟与活清单缓存的
+     * TTL 同口径：过期只是让这一轮退回探针，不会让页面空着。
+     */
+    private const val STATUS_MAX_AGE_MS = 10 * 60 * 1000L
+
     /** 与 `DshRuntimeConfig.rootScript()` 同源的命令名：`su -c` 走的还是 `sh`。 */
     private const val HOST_SHELL = "sh"
+
+    /**
+     * 会话进程写的那份清单（`heta-status.mjs` → `$DSH_HOME/heta-inventory.json`）。
+     *
+     * 为什么等价：那个插件在**跑着的会话进程**里照同一段官方投影（`readPluginInventory`）写文件，
+     * 所以内容与探针一样，连协议前缀都一样 —— 解析器还是 [DshLiveInventoryCodec]。
+     *
+     * 为什么走 `su -c cat`：`/root/.dsh` 是 root 私有目录，App 自己读不了（同探针那条 su）。
+     * 为什么 stdout 重定向到文件而不是管道：管道只有 64KB，这份 JSON 会超过它。
+     */
+    private fun readStatusFile(root: File): DshLiveInventory.Ready? {
+        val file = File(root, STATUS_RELATIVE)
+        val out = runCatching { File.createTempFile("dsh-status-", ".json") }.getOrNull() ?: return null
+        return try {
+            val process = ProcessBuilder(SU, "-c", "cat ${DshRuntimeConfig.shellQuote(file.absolutePath)}")
+                .redirectOutput(out)
+                // stderr 不要（su 自己的告警）：DISCARD 在 Kotlin 这层解析不到，丢 /dev/null。
+                .redirectError(File("/dev/null"))
+                .start()
+            if (!process.waitFor(STATUS_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly()
+                return null
+            }
+            if (process.exitValue() != 0) return null
+            val text = runCatching { out.readText() }.getOrNull() ?: return null
+            if (text.isBlank() || !statusIsFresh(text)) return null
+            DshLiveInventoryCodec.parse(text) as? DshLiveInventory.Ready
+        } catch (error: Exception) {
+            Log.w(TAG, "状态文件读不动，退回探针", error)
+            null
+        } finally {
+            runCatching { out.delete() }
+        }
+    }
+
+    /** `at` 在 [STATUS_MAX_AGE_MS] 之内才算新鲜；没有 `at`（或不是数）当旧。 */
+    private fun statusIsFresh(text: String): Boolean = runCatching {
+        val marker = text.indexOf("HETA-INVENTORY-JSON:")
+        if (marker < 0) return false
+        val json = text.substring(marker + "HETA-INVENTORY-JSON:".length).lineSequence().first()
+        val at = JSONObject(json).optLong("at", 0L)
+        at > 0L && System.currentTimeMillis() - at <= STATUS_MAX_AGE_MS
+    }.getOrDefault(false)
 
     /**
      * 读一次活清单。**不抛异常**：任何失败都变成 [DshLiveInventory.Failed]，
@@ -79,6 +143,9 @@ internal object DshInventoryProbe {
         if (!DshRuntimeInstaller.isReady(context)) {
             return DshLiveInventory.Failed("对话运行时还没装好，读不到活清单")
         }
+        // 先看会话进程写出来的那份（同一个投影，一次 cat 就够）；读不到 / 太旧 / 解析不了
+        // 都直接往下走 —— 下面那条探针照旧是兜底。
+        readStatusFile(root)?.let { return it }
         val logs = runCatching {
             File.createTempFile("dsh-inventory-out-", ".log") to
                 File.createTempFile("dsh-inventory-err-", ".log")

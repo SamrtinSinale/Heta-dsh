@@ -246,6 +246,21 @@ class DshLiveInventoryCodecTest {
         assertEquals("plain", dshModuleShortName("plain"))
     }
 
+    @Test
+    fun parsesTheStatusFileBodyWrittenByTheSessionPlugin() {
+        // 会话插件（heta-status.mjs）写的是**同一行协议**：marker + JSON，只多一个 at（App 用它判
+        // 新旧）。所以 App 那边一个解析器就够 —— 探针的 stdout 与这个文件走同一条路。
+        val ready = ready(
+            "HETA-INVENTORY-JSON:{\"at\":1790000000000,\"entries\":[{\"entryId\":\"include\"," +
+                "\"moduleName\":\"cordis:include\",\"enabled\":true,\"fiberPhase\":\"active\"}]," +
+                "\"hasPresets\":false,\"timedOut\":false}\n",
+        )
+
+        assertEquals(1, ready.entries.size)
+        assertEquals("include", ready.entries[0].entryId)
+        assertTrue(ready.entries[0].enabled)
+    }
+
     private companion object {
 
         const val MODULE_NAME = "@deepseek-ai/dsh-plugin-manager/tools"

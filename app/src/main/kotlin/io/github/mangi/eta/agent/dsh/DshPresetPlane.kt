@@ -54,6 +54,15 @@ internal object DshPresetPlane {
     /** join 插件：官方把"会话 → 预设"放在 Web 浏览器半边，ACP 这条路上只能我们自己补。 */
     const val JOIN_ASSET = "heta-preset-join.mjs"
 
+    /**
+     * 状态出口插件：把**活的**插件清单写成 `$DSH_HOME/heta-inventory.json`，App 直接读文件。
+     *
+     * 为什么要有它：扩展页那份活清单以前只能靠"再起一个 dsh"算出来（`DshInventoryProbe`），
+     * 实测 ~27 秒，App 每次重启后第一次点开都要等。会话进程本来就已经把插件挂好了，顺手写一份
+     * 文件几乎不要钱。
+     */
+    const val STATUS_ASSET = "heta-status.mjs"
+
     private const val ASSET_DIR = "heta-presets"
 
     /**
@@ -204,6 +213,9 @@ internal object DshPresetPlane {
     /** join 插件的全文（写进 runtime root，覆盖层里用相对名 `./heta-preset-join.mjs` 引用它）。 */
     fun joinPlugin(read: (String) -> String): String = read(JOIN_ASSET)
 
+    /** 状态出口插件的全文（同 [joinPlugin]，相对名 `./heta-status.mjs`）。 */
+    fun statusPlugin(read: (String) -> String): String = read(STATUS_ASSET)
+
     /**
      * 被预设接管的行 id。
      *
@@ -244,6 +256,13 @@ internal object DshPresetPlane {
     fun joinPluginFor(context: Context): String =
         runCatching { joinPlugin(reader(context)) }.getOrElse { throwable ->
             Log.w(TAG, "preset join 插件读不出来", throwable)
+            ""
+        }
+
+    /** 状态出口插件全文；读不出来返回空串（那一轮就退回探针那条路，不影响会话）。 */
+    fun statusPluginFor(context: Context): String =
+        runCatching { statusPlugin(reader(context)) }.getOrElse { throwable ->
+            Log.w(TAG, "status 插件读不出来", throwable)
             ""
         }
 

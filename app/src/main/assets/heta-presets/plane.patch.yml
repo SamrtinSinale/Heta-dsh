@@ -25,6 +25,13 @@
     - id: heta-preset-join
       name: ./heta-preset-join.mjs
 
+# Heta 的状态出口：会话进程自己把**活的**插件清单写成文件（`$DSH_HOME/heta-inventory.json`），
+# App 直接 `su -c cat` 读它 —— 不必为了看一眼清单再起一个 dsh（那条路实测 ~27 秒，而且要等
+# App 重启后第一次点开扩展页）。见 heta-status.mjs。
+- insert:
+    - id: heta-status
+      name: ./heta-status.mjs
+
 # cordisInspect 的两个 Host 行 —— 逐字照抄 @deepseek-ai/dsh-web-app 的 cordis.patch.yml:150-157。
 #
 # 少了它们，`cordis`（创造模式）预设里的 `tool-cordis` 行会一直
