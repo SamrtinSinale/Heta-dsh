@@ -9,15 +9,21 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,24 +31,34 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshInventoryBundle
 import io.github.mangi.eta.agent.dsh.DshInventoryRow
 import io.github.mangi.eta.agent.dsh.DshLiveEntry
 import io.github.mangi.eta.agent.dsh.DshLiveInventory
 import io.github.mangi.eta.agent.dsh.DshLivePreset
+import io.github.mangi.eta.agent.dsh.DshLivePresetRow
+import io.github.mangi.eta.agent.dsh.DshLocalizedText
 import io.github.mangi.eta.agent.dsh.DshPresetGuides
 import io.github.mangi.eta.agent.dsh.DshPresetPlane
 import io.github.mangi.eta.agent.dsh.DshRowState
+import io.github.mangi.eta.agent.dsh.dshLivePresetProviders
+import io.github.mangi.eta.agent.dsh.dshModuleShortName
+import io.github.mangi.eta.agent.dsh.dshLiveRowKey
 import io.github.mangi.eta.ui.components.EtaPreference
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
@@ -57,13 +73,17 @@ import io.github.mangi.eta.ui.components.StatusSuccess
 import io.github.mangi.eta.ui.components.StatusWarning
 import io.github.mangi.eta.ui.components.DshPresetGuideDialog
 import io.github.mangi.eta.ui.components.DshPresetRow
+import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.InputField
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowListPopup
 
 /** dsh 报的"运行中"这个 phase 的字面量（命中它就不在行上写状态，见 DshLiveSwitchRow）。 */
 private const val ACTIVE_PHASE = "active"
@@ -84,6 +104,13 @@ internal fun DshExtensionsScreen(
     val store = remember { DshExtensionsStore(context, scope) }
     // 搜索词只活在这一页里：按模块名 / 行编号做本地过滤，不碰清单、也不重新探针。
     var query by remember { mutableStateOf("") }
+    // 两个分组的折叠：会话插件那组（只读清单）与全局那组（开关在那里）。默认都展开 ——
+    // 手机屏上先折一层就等于把内容藏起来；点标题能收。搜索时两组都强制展开（官方口径）。
+    var sessionExpanded by remember { mutableStateOf(true) }
+    var globalExpanded by remember { mutableStateOf(true) }
+    // 会话插件那组**在看哪个预设**（null = 跟默认预设走）。它只决定这一页显示什么，
+    // 不改任何设置 —— 真机反馈："插件分类应该是会话插件右边选择标准模式还是 ptc"。
+    var viewedPresetId by remember { mutableStateOf<String?>(null) }
 
     MiuixScaffoldPage(
         title = stringResource(R.string.extensions_title),
@@ -193,11 +220,27 @@ internal fun DshExtensionsScreen(
 
         val searching = query.isNotBlank()
         val liveEntries = live?.entries.orEmpty().filter { dshRowMatches(query, it.moduleName, it.patchId) }
+        // 会话插件那组要画哪些行：没搜索时是"正在看的那个预设"的行；搜索时是**所有预设**的命中行
+        //（官方口径：搜索跨两组），行上标出它来自哪个预设。
+        val viewedPreset = viewedPresetId
+            ?: live?.presets.orEmpty().firstOrNull { it.isDefault }?.id
+            ?: live?.presets.orEmpty().firstOrNull()?.id
+            ?: ""
+        val sessionRows: List<Pair<String, DshLivePresetRow>> = when {
+            live == null -> emptyList()
+            searching -> live.presets.flatMap { preset ->
+                preset.rows.filter { dshRowMatches(query, it.moduleName, it.entryId) }
+                    .map { preset.id to it }
+            }
+
+            else -> live.presets.firstOrNull { it.id == viewedPreset }
+                ?.rows.orEmpty().map { viewedPreset to it }
+        }
         val fileRows = inventory.rows.filter { dshRowMatches(query, it.moduleName, it.patchId) }
         // 活清单没落定之前，插件行一行都不画 —— 两套数据的开关口径不一样，按中间态画会闪
         //（开关出现一下又没了），见 [DshExtensionsStore.liveSettled]。
         val rowsReady = live != null || store.liveSettled
-        val rowCount = if (live != null) liveEntries.size else fileRows.size
+        val rowCount = if (live != null) liveEntries.size + sessionRows.size else fileRows.size
 
         // 数据层只报"清单里选中的"和"真读得出来的"包；选中的坏包也要列 —— 原因要看得见，
         // 也得能把它关掉（关掉正是那种坏清单的修法）。
@@ -223,8 +266,21 @@ internal fun DshExtensionsScreen(
                 ListEmptyState(title = stringResource(R.string.extensions_search_empty))
             }
         } else if (rowsReady && live != null) {
-            // 活清单可用：插件行按官方那页的字段渲染（模块名 / 配置状态 / 运行状态 / 预设）。
-            dshLiveSections(store, live, liveEntries, searching)
+            // 活清单可用：插件行按官方那页的字段渲染（模块名 / 配置状态 / 运行状态 / 预设），
+            // 并按作用域分成"预设（会话）"与"全局"两组 —— 见 dshLiveSections。
+            dshLiveSections(
+                store = store,
+                live = live,
+                entries = liveEntries,
+                sessionRows = sessionRows,
+                viewedPresetId = viewedPreset,
+                searching = searching,
+                sessionExpanded = sessionExpanded,
+                onSessionToggle = { sessionExpanded = !sessionExpanded },
+                onPresetView = { id -> viewedPresetId = id },
+                globalExpanded = globalExpanded,
+                onGlobalToggle = { globalExpanded = !globalExpanded },
+            )
         } else if (rowsReady) {
             // 取不到活清单：保持原来的文件视图（按补丁层来源分组），开关照旧写 profile 文件。
             // groupBy 用 LinkedHashMap：组标题就是 source（bundle 包名 / profile 补丁层 / home 补丁层 /
@@ -508,7 +564,14 @@ private fun LazyListScope.dshLiveSections(
     store: DshExtensionsStore,
     live: DshLiveInventory.Ready,
     entries: List<DshLiveEntry>,
+    sessionRows: List<Pair<String, DshLivePresetRow>>,
+    viewedPresetId: String,
     searching: Boolean,
+    sessionExpanded: Boolean,
+    onSessionToggle: () -> Unit,
+    onPresetView: (String) -> Unit,
+    globalExpanded: Boolean,
+    onGlobalToggle: () -> Unit,
 ) {
     // 预设排在插件行**前面**：这一页要回答的第一个问题是"用哪一套"，插件行才是"这套里每一行
     // 是什么"。官方客户端也是先给预设卡片。真机反馈过"预设为什么在最底部"——107 条行之后它
@@ -544,27 +607,349 @@ private fun LazyListScope.dshLiveSections(
         item(key = "presets_gap") { DshGroupGap() }
     }
 
-    // 分组标题只在过滤后有内容时才画。
-    if (entries.isNotEmpty()) {
-        item(key = "live_title") {
-            EtaPreferenceGroupTitle(stringResource(R.string.extensions_group_live))
+    // 哪些全局行也被某个预设按会话提供（官方口径：由预设提供的全局条目要列出对应预设）。
+    // 对齐逻辑（剥 `include:` 前缀、退回模块名）在数据层，见 [dshLivePresetProviders]。
+    val providedBy = dshLivePresetProviders(live.presets)
+
+    // ---- 会话插件：**一个分组**，标题右边选"看哪个预设"（真机反馈："插件分类应该是会话插件
+    // 右边选择标准模式还是 ptc"）。这些行由预设按会话组合，**只读**：它们没有补丁行 id，改不了。
+    //
+    // 标题与行**包在同一张卡片里**（真机反馈："这个 UI 分类是裸着的没有一层包裹住它"）——
+    // 标题就是这张卡的第一行，行跟着它，中间由 EtaPreferenceGroupItem 画那条分割线。
+    if (live.presets.isNotEmpty()) {
+        val sessionOpen = sessionExpanded || searching
+        item(key = "session_group") {
+            EtaPreferenceGroupItem(
+                isFirst = true,
+                isLast = !sessionOpen || sessionRows.isEmpty(),
+                hasLeading = false,
+            ) {
+                DshSessionGroupHeader(
+                    presets = live.presets,
+                    viewedId = viewedPresetId,
+                    rowCount = sessionRows.size,
+                    expanded = sessionOpen,
+                    locked = searching,
+                    onToggle = onSessionToggle,
+                    onSelect = onPresetView,
+                )
+            }
         }
-        // 插件段只留这一条说明（把原来页面顶部那两条并进来）。
-        if (!searching) item(key = "plugins_note") { DshNote(stringResource(R.string.extensions_note_plugins)) }
+        if (sessionOpen) {
+            sessionRows.forEachIndexed { index, (presetId, row) ->
+                item(key = "session_row:$index:${dshLiveRowKey(row.entryId, row.moduleName)}") {
+                    EtaPreferenceGroupItem(
+                        isFirst = false,
+                        isLast = index == sessionRows.lastIndex,
+                        hasLeading = true,
+                    ) {
+                        DshPresetProvidedRow(row = row, presetId = presetId.takeIf { searching })
+                    }
+                }
+            }
+        }
+        item(key = "session_gap") { DshGroupGap() }
+    }
+
+    // ---- 全局插件：profile 自己的全局平面，开关在这里（写补丁层，下一条消息生效）。
+    val globalOpen = globalExpanded || searching
+    item(key = "global_group") {
+        EtaPreferenceGroupItem(
+            isFirst = true,
+            isLast = !globalOpen || entries.isEmpty(),
+            hasLeading = false,
+        ) {
+            DshGlobalGroupHeader(
+                rowCount = entries.size,
+                expanded = globalOpen,
+                locked = searching,
+                onToggle = onGlobalToggle,
+            )
+        }
+    }
+    if (globalOpen) {
         // 一行一个 item（卡片外观与分割线由 EtaPreferenceGroupItem 负责，同 ProviderModelsTab 的模型
         // 列表）：上百条活条目时也只组合看得见的那几行；"展开一行"只影响它自己那一项。
         // 行高恒定 + 详情挂在行的下面 —— 见 DshExpandableDetails。
         entries.forEachIndexed { index, entry ->
             item(key = "live_row:${entry.entryId}") {
                 EtaPreferenceGroupItem(
-                    isFirst = index == 0,
+                    isFirst = false,
                     isLast = index == entries.lastIndex,
                     hasLeading = true,
                 ) {
-                    DshLiveSwitchRow(store, entry)
+                    DshLiveSwitchRow(
+                        store = store,
+                        entry = entry,
+                        providedBy = providedBy[dshLiveRowKey(entry.entryId, entry.moduleName)].orEmpty(),
+                    )
                 }
             }
         }
+        if (entries.isEmpty() && !searching) {
+            item(key = "rows_empty") {
+                ListEmptyState(
+                    title = stringResource(R.string.extensions_empty_title),
+                    summary = stringResource(R.string.extensions_empty_summary),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 可折叠的分组标题：左边标题，右边"N 行"与箭头，整行可点；[trailing] 是可选的操作槽
+ *（会话插件那组放的就是"看哪个预设"的选择器）。
+ *
+ * 缩进按**卡片内**算（16dp）：这个标题现在是卡片的第一行（见 [EtaPreferenceGroupItem]），
+ * 卡片自己已经缩进 16dp，再缩 16dp 才与行里的文字对齐。
+ *
+ * 搜索中不给折（[locked]）—— 那时"展开"是搜索结果的语义，不是用户的选择。
+ */
+@Composable
+private fun DshCollapsibleGroupTitle(
+    title: String,
+    meta: String,
+    summary: String?,
+    expanded: Boolean,
+    locked: Boolean,
+    onToggle: () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !locked, onClick = onToggle)
+            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MiuixTheme.textStyles.subtitle,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.weight(1f),
+            )
+            trailing?.invoke()
+            Text(
+                text = meta,
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+            if (!locked) {
+                Icon(
+                    imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = stringResource(
+                        if (expanded) R.string.extensions_group_collapse else R.string.extensions_group_expand,
+                    ),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(start = 4.dp).size(18.dp),
+                )
+            }
+        }
+        if (!summary.isNullOrBlank()) {
+            Text(
+                text = summary,
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 会话插件那一组的标题：左边标题与说明，右边一个"看哪个预设"的选择器。
+ *
+ * 为什么不按预设分四组：真机反馈原话"插件分类应该是会话插件右边选择标准模式还是 ptc" ——
+ * 四个预设的组合行大部分重叠，摊成四组就是四份一样的包名，还会与上面"预设"那一段重名。
+ * 一个分组 + 一个选择器，一次只看一个预设。
+ */
+@Composable
+private fun DshSessionGroupHeader(
+    presets: List<DshLivePreset>,
+    viewedId: String,
+    rowCount: Int,
+    expanded: Boolean,
+    locked: Boolean,
+    onToggle: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    val viewed = presets.firstOrNull { it.id == viewedId }
+    DshCollapsibleGroupTitle(
+        title = stringResource(R.string.extensions_group_session),
+        meta = stringResource(R.string.extensions_preset_rows, rowCount),
+        summary = viewed?.broken?.let { stringResource(R.string.extensions_preset_broken_summary, it) }
+            ?: stringResource(R.string.extensions_preset_group_note),
+        expanded = expanded,
+        locked = locked,
+        onToggle = onToggle,
+        trailing = if (locked) {
+            null
+        } else {
+            { DshPresetPicker(presets = presets, viewedId = viewedId, onSelect = onSelect) }
+        },
+    )
+}
+
+/**
+ * "看哪个预设"的选择器：胶囊（当前预设名 + 箭头）+ 下拉菜单，选项就是 roster 里的预设。
+ *
+ * 它**只换这一页显示什么**，不写任何设置 —— 换"新任务默认"是上面"预设"那一段的事。
+ * 两件事分开，才不会出现"我只是想看看 PTC 有哪些行，结果默认预设被改了"。
+ */
+@Composable
+private fun DshPresetPicker(
+    presets: List<DshLivePreset>,
+    viewedId: String,
+    onSelect: (String) -> Unit,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val description = stringResource(R.string.extensions_preset_view)
+    val current = presets.firstOrNull { it.id == viewedId }
+        ?.let { DshPresetGuides.name(context, it.id, locale) ?: it.name }
+        ?: viewedId
+    Box {
+        Row(
+            modifier = Modifier
+                .clickable { showMenu = true }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .semantics { contentDescription = description },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = current,
+                style = MiuixTheme.textStyles.body1,
+                color = MiuixTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(modifier = Modifier.width(2.dp))
+            Icon(
+                imageVector = Icons.Rounded.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            )
+        }
+        WindowListPopup(
+            show = showMenu,
+            alignment = PopupPositionProvider.Align.End,
+            onDismissRequest = { showMenu = false },
+        ) {
+            val labels = presets.map { DshPresetGuides.name(context, it.id, locale) ?: it.name }
+            ListPopupColumn {
+                labels.forEachIndexed { index, text ->
+                    DropdownImpl(
+                        text = text,
+                        optionSize = labels.size,
+                        isSelected = presets[index].id == viewedId,
+                        index = index,
+                        onSelectedIndexChange = {
+                            showMenu = false
+                            onSelect(presets[index].id)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 全局那一组的标题：开关在这里。 */
+@Composable
+private fun DshGlobalGroupHeader(
+    rowCount: Int,
+    expanded: Boolean,
+    locked: Boolean,
+    onToggle: () -> Unit,
+) {
+    DshCollapsibleGroupTitle(
+        title = stringResource(R.string.extensions_group_global),
+        meta = stringResource(R.string.extensions_preset_rows, rowCount),
+        summary = stringResource(R.string.extensions_note_plugins),
+        expanded = expanded,
+        locked = locked,
+        onToggle = onToggle,
+    )
+}
+
+/**
+ * 预设（会话）提供的一行：**只读，没有开关**。
+ *
+ * 为什么这里不给开关：这一行是 Agent 预设**按会话**组合出来的（官方 `AgentPresetPluginRow`
+ * 只有 entryId / moduleName / enabled / condition / fiberPhase，**没有补丁行 id**），而写文件
+ * 是按补丁行定位的 —— 它在这一页天然改不了，要改就改预设本身。真机反馈原话："插件也该分类，
+ * 因为有的不可控制有的可以控制"。
+ */
+@Composable
+private fun DshPresetProvidedRow(row: DshLivePresetRow, presetId: String?) {
+    var expanded by remember(row.entryId, row.moduleName) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val preferred = dshLocalePreference(locale)
+    // 官方那套：有元数据用元数据的标题/说明，没有就退回**短包名**（官方也只给设置页用短名）。
+    val title = row.title?.resolve(preferred) ?: dshModuleShortName(row.moduleName)
+    val description = row.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
+    // 行上只写"不正常"的那几件（同 DshLiveSwitchRow 的口径）：来自哪个预设（搜索时）/ 已停用 /
+    // 视条件而定 / 运行状态；标题与短 id 相同时不再重复写 id（官方同一条）。
+    val labels = listOfNotNull(
+        presetId?.let { DshPresetGuides.name(context, it, locale) ?: it },
+        dshEntryIdLine(row.entryId, title),
+        if (row.enabled == false) stringResource(R.string.extensions_state_disabled) else null,
+        if (row.conditional) stringResource(R.string.extensions_preset_conditional) else null,
+        if (row.fiberPhase != null && row.fiberPhase != ACTIVE_PHASE) {
+            runtimeStateLabel(row.fiberPhase)
+        } else {
+            null
+        },
+    )
+    EtaPreference(
+        enabled = true,
+        onClick = { expanded = !expanded },
+        onClickLabel = stringResource(R.string.extensions_detail_toggle),
+    ) {
+        Text(
+            text = title,
+            style = MiuixTheme.textStyles.body1,
+            fontWeight = FontWeight.Medium,
+            color = MiuixTheme.colorScheme.onBackground,
+        )
+        if (description != null) {
+            Text(
+                text = description,
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        if (labels.isNotEmpty()) {
+            Text(
+                text = labels.joinToString(" · "),
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+    DshExpandableDetails(visible = expanded) {
+        row.entryId?.let { DshDetailLine(stringResource(R.string.extensions_detail_entry_id), it) }
+        DshDetailLine(stringResource(R.string.extensions_detail_full_name), row.moduleName)
+        DshDetailLine(
+            stringResource(R.string.extensions_detail_config_state),
+            row.enabled?.let { configStateLabel(it) }
+                ?: stringResource(R.string.extensions_preset_conditional),
+        )
+        DshDetailLine(
+            stringResource(R.string.extensions_detail_runtime_state),
+            runtimeStateLabel(row.fiberPhase),
+        )
+        row.condition?.let { DshDetailLine(stringResource(R.string.extensions_preset_condition), it) }
+        DshDetailNote(stringResource(R.string.extensions_preset_row_readonly))
     }
 }
 
@@ -582,7 +967,11 @@ private fun LazyListScope.dshLiveSections(
  * 缺哪一条都禁掉开关，并在说明里写清楚原因。
  */
 @Composable
-private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
+private fun DshLiveSwitchRow(
+    store: DshExtensionsStore,
+    entry: DshLiveEntry,
+    providedBy: List<String> = emptyList(),
+) {
     // 展开状态跟着这一条 Loader 条目走，不是跟着列表走。
     var expanded by remember(entry.entryId) { mutableStateOf(false) }
     val row = store.patchRowFor(entry)
@@ -597,6 +986,10 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
     val toggleable = switchable && blocked == null && row != null && !store.working
     val configState = configStateLabel(store.enabledFor(entry))
     val runtimeState = runtimeStateLabel(entry.fiberPhase)
+    // 官方那页显示的是标题 + 说明（`pluginPackages` 的本地化元数据），没有才退回短包名。
+    val preferred = dshLocalePreference(LocalConfiguration.current.locales[0])
+    val title = entry.title?.resolve(preferred) ?: dshModuleShortName(entry.moduleName)
+    val description = entry.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
     // 文件层说它是开着的、这一轮却读到关着 —— 那是**探针**为了腾出 stdio 自己关掉的
     //（见 DshInventoryProbe），真实对话里它是开着的。以前这层意思靠页面顶部一条小灰字解释，
     // 现在写在**这一行自己**身上。
@@ -605,6 +998,7 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
     // 107 行就是这么糊起来的（真机反馈"你的扩展页面很冗杂"）。编号 / 来源 / 为什么改不了 /
     // 被谁改过，全部收进展开详情。
     val summary = listOfNotNull(
+        dshEntryIdLine(entry.entryId, title),
         if (probeOverride) stringResource(R.string.extensions_live_probe_override) else null,
         if (entry.fiberPhase != null && entry.fiberPhase != ACTIVE_PHASE) runtimeState else null,
     ).joinToString("\n")
@@ -631,7 +1025,7 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
         // `EtaPreferenceRow` 是"给了 titleContent 就不看 title/summary"（二选一），所以标题与说明
         // 必须在这里自己画（同 DshPluginSwitchRow）—— 两个都传会让整行空白。
         Text(
-            text = entry.moduleName,
+            text = title,
             style = MiuixTheme.textStyles.body1,
             fontWeight = FontWeight.Medium,
             color = if (toggleable) {
@@ -640,6 +1034,21 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
                 MiuixTheme.colorScheme.disabledOnSurface
             },
         )
+        // 官方那页每张卡片都带一句包说明（最多两行）—— 这是"看着不顺眼"的正主：以前只有一串包名。
+        if (description != null) {
+            Text(
+                text = description,
+                style = MiuixTheme.textStyles.body2,
+                color = if (toggleable) {
+                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                } else {
+                    MiuixTheme.colorScheme.disabledOnSurface
+                },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         // 空说明不画：一个空 Text 也会占一行高度，107 行就是 107 行多余的空白。
         if (summary.isNotEmpty()) {
             Text(
@@ -665,6 +1074,15 @@ private fun DshLiveSwitchRow(store: DshExtensionsStore, entry: DshLiveEntry) {
         DshDetailLine(stringResource(R.string.extensions_detail_runtime_state), runtimeState)
         // 文件视图里有这一行才说得出"它来自哪一层"；没有就不编。
         row?.let { DshDetailLine(stringResource(R.string.extensions_detail_source), it.source) }
+        // 这一行同时被某个预设按会话提供（官方：由预设提供的全局条目要列出对应预设）。
+        // 只放详情里、不挂在行上：全局平面上"被预设提供"是常态（四份预设几乎覆盖整个平面），
+        // 挂到行上就是把一百多行重新糊一遍。
+        if (providedBy.isNotEmpty()) {
+            val context = LocalContext.current
+            val locale = LocalConfiguration.current.locales[0]
+            val names = providedBy.map { id -> DshPresetGuides.name(context, id, locale) ?: id }
+            DshDetailNote(stringResource(R.string.extensions_row_provided_by_preset, names.joinToString(", ")))
+        }
         // 下面这些以前贴在行上（于是每行都是两三行小字），现在只在展开时出现。
         blocked?.let { DshDetailNote(it) }
         row?.takeIf { it.mentionedBy.isNotEmpty() }?.let {
@@ -759,3 +1177,33 @@ private fun runtimeStateLabel(phase: String?): String = when (phase) {
 
 // 预设行的逐条状态（`presetRowState`）随"卡片式预设"一起删了：页面上不再逐行列出组合，
 // 那部分是 29×4 行的噪声。预设组合行仍然被解析（DshLivePresetRow），只是不画。
+
+/**
+ * 官方 `LocalizedText` 的取值顺序。
+ *
+ * 官方那套 locale 键是 `en` / `zh-Hans` 这类（客户端字典里只有 `zh-Hans` 与 `en`），繁体没有
+ * 单独一份 —— 所以 zh-Hant 先试 zh-Hant（将来有就用），再退 zh-Hans，最后 en。
+ */
+private fun dshLocalePreference(locale: Locale): List<String> = when (locale.language) {
+    "zh" -> {
+        val script = locale.script
+        val traditional = script.equals("Hant", ignoreCase = true) ||
+            (
+                !script.equals("Hans", ignoreCase = true) &&
+                    (locale.country.equals("TW", true) || locale.country.equals("HK", true) ||
+                        locale.country.equals("MO", true))
+                )
+        if (traditional) listOf("zh-Hant", "zh-Hans", "en") else listOf("zh-Hans", "en")
+    }
+
+    else -> listOf("en")
+}
+
+/**
+ * 官方那条：卡片显示条目 id **仅当**它（去掉 `include:` 之后）与标题不同。
+ *
+ * 同一个模块在 Loader 里可能出现多次（不同 include 行），标题一样、id 不一样 —— 这时 id 就是
+ * 唯一的区分。而 id 与标题相同时再写一遍只是噪声。
+ */
+private fun dshEntryIdLine(entryId: String?, title: String): String? =
+    entryId?.removePrefix("include:")?.takeIf { it != title }

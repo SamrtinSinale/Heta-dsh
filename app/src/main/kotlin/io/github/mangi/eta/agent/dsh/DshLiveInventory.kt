@@ -29,6 +29,9 @@ internal data class DshLiveEntry(
     val enabled: Boolean,
     val fiberPhase: String?,
     val patchId: String?,
+    /** 官方给的本地化显示元数据（`pluginPackages`），没有就是 null —— 界面退回短包名。 */
+    val title: DshLocalizedText? = null,
+    val description: DshLocalizedText? = null,
 )
 
 /**
@@ -52,7 +55,35 @@ internal data class DshLivePresetRow(
      * 是为了桥真带出来时不丢信息 —— 界面这一期不给预设行开关。
      */
     val patchId: String?,
+    /** 同 [DshLiveEntry.title]：官方那份投影里预设行也带 `meta`。 */
+    val title: DshLocalizedText? = null,
+    val description: DshLocalizedText? = null,
 )
+
+/**
+ * 官方 `PluginLocalizedMeta` 里的那两种写法：**字面串**，或 `locale → 文案` 的表
+ *（`LocalizedText = string | { en: string; [locale: string]: string }`）。
+ *
+ * 为什么原样留着、不在解析时定死语言：解析在数据层，它不知道界面现在是什么语言；官方的
+ * 做法也是把两种形态原样送到客户端、由客户端按当前语言解析（`typeof title === 'object' ?
+ * resolveText(title) : moduleShortName(...)`）。
+ */
+internal sealed interface DshLocalizedText {
+    data class Literal(val text: String) : DshLocalizedText
+    data class Localized(val values: Map<String, String>) : DshLocalizedText
+
+    /**
+     * 按偏好顺序取第一条非空文案；一条都没有就是 null（调用方退回包名）。
+     *
+     * 字面串不看偏好 —— 它本来就没有语言标记。
+     */
+    fun resolve(preferred: List<String>): String? = when (this) {
+        is Literal -> text.takeIf { it.isNotBlank() }
+        is Localized -> preferred.firstNotNullOfOrNull { key ->
+            values[key]?.takeIf { it.isNotBlank() }
+        }
+    }
+}
 
 /** 一个预设：名字、是不是默认、以及它组合了哪些行。 */
 internal data class DshLivePreset(
@@ -111,6 +142,9 @@ internal object DshLiveInventoryCodec {
     private const val ENTRY_ID = "entryId"
     private const val MODULE_NAME = "moduleName"
     private const val PATCH_ID = "patchId"
+    private const val META = "meta"
+    private const val TITLE = "title"
+    private const val DESCRIPTION = "description"
     private const val ENABLED = "enabled"
     private const val FIBER_PHASE = "fiberPhase"
     private const val CONDITION = "condition"
@@ -158,6 +192,7 @@ internal object DshLiveInventoryCodec {
             // 没有 entryId 的行本来也没法在界面上寻址。
             val item = array.optJSONObject(index) ?: continue
             val entryId = textOrNull(item, ENTRY_ID) ?: continue
+            val meta = item.optJSONObject(META)
             entries += DshLiveEntry(
                 entryId = entryId,
                 moduleName = textOrNull(item, MODULE_NAME) ?: entryId,
@@ -168,6 +203,11 @@ internal object DshLiveInventoryCodec {
                 // 桥没给这个键（或给了空值）就是"这一行没有补丁行 id"：界面据此禁掉它的开关，
                 // 而不是拿 entryId 去试（那是 Loader 树 id，写文件按它定位就是改错行）。
                 patchId = textOrNull(item, PATCH_ID),
+                // 官方那页显示的是标题 + 说明（`pluginPackages` 给的本地化元数据）；
+                // 没有它就只能显示包名 —— 真机反馈"官方是 typert-loader / Loader integration…，
+                // 而 heta 是一串包名 + 已禁用"。
+                title = localizedOrNull(meta, TITLE),
+                description = localizedOrNull(meta, DESCRIPTION),
             )
         }
         return entries
@@ -200,6 +240,7 @@ internal object DshLiveInventoryCodec {
             // `enabled` 在预设行里可能是布尔，也可能是字符串 `conditional`
             //（那种行由 `condition` 表达式决定）。原样表达，不替它猜一个布尔。
             val raw = item.opt(ENABLED)
+            val meta = item.optJSONObject(META)
             rows += DshLivePresetRow(
                 entryId = textOrNull(item, ENTRY_ID),
                 moduleName = moduleName,
@@ -208,9 +249,30 @@ internal object DshLiveInventoryCodec {
                 condition = textOrNull(item, CONDITION),
                 fiberPhase = textOrNull(item, FIBER_PHASE),
                 patchId = textOrNull(item, PATCH_ID),
+                title = localizedOrNull(meta, TITLE),
+                description = localizedOrNull(meta, DESCRIPTION),
             )
         }
         return rows
+    }
+
+    /** 官方 `meta` 里的本地化文本：字面串或 `locale → 文案` 的表；两种都不是就当没有。 */
+    private fun localizedOrNull(meta: JSONObject?, key: String): DshLocalizedText? {
+        if (meta == null || !meta.has(key) || meta.isNull(key)) return null
+        val raw = meta.opt(key)
+        return when (raw) {
+            is String -> DshLocalizedText.Literal(raw).takeIf { raw.isNotBlank() }
+            is JSONObject -> {
+                val values = LinkedHashMap<String, String>()
+                for (locale in raw.keys()) {
+                    val text = raw.optString(locale).takeIf { it.isNotBlank() } ?: continue
+                    values[locale] = text
+                }
+                if (values.isEmpty()) null else DshLocalizedText.Localized(values)
+            }
+
+            else -> null
+        }
     }
 
     /** 文本字段：缺失、"null"、空串一律当没有。 */
@@ -223,4 +285,64 @@ internal object DshLiveInventoryCodec {
 
     private fun describe(error: Throwable): String =
         error.message ?: error::class.java.simpleName
+}
+
+/**
+ * 组合 id / 补丁行 id 的归一化 —— 用来把"预设组合里的行"与"全局清单里的行"对上。
+ *
+ * 为什么不能直接比：官方投影里组合生成的 id 常带 `include:` 前缀（官方界面显示时才把它省掉），
+ * 而全局条目那边不一定带；大小写也不保证一致。所以两边都剥前缀、统一小写再比。没有 id 才退回
+ * 模块名 —— 那是两边都有的字段。
+ */
+internal fun dshLiveRowKey(entryId: String?, moduleName: String?): String {
+    val raw = entryId?.takeIf { it.isNotBlank() } ?: moduleName.orEmpty()
+    return raw.removePrefix("include:").lowercase()
+}
+
+/**
+ * 哪些全局条目被哪些预设**按会话**提供（键 = [dshLiveRowKey]）。
+ *
+ * 官方那份只读清单里，"由预设提供的全局条目"要列出对应预设（`ui-settings-plugin-inventory`：
+ * 被预设提供的全局行说明它由 Agent 预设按会话提供、列出启用它的预设）。这里把预设 roster 反查成
+ * 一张表，界面拿它给全局行挂一句说明。
+ *
+ * 同一个预设重复给同一行只记一次（组合里同一模块可能出现多次）；预设按 roster 顺序排，稳定。
+ */
+internal fun dshLivePresetProviders(presets: List<DshLivePreset>): Map<String, List<String>> {
+    val providers = LinkedHashMap<String, MutableList<String>>()
+    presets.forEach { preset ->
+        preset.rows.forEach { row ->
+            val key = dshLiveRowKey(row.entryId, row.moduleName)
+            val list = providers.getOrPut(key) { ArrayList(2) }
+            if (!list.contains(preset.id)) list += preset.id
+        }
+    }
+    return providers
+}
+
+/**
+ * 官方那份清单的**短名回退**：`meta.title` 缺席时用它，逐字照抄客户端那段
+ *（`dsh-client-ui-settings-plugin-inventory/lib/client.js`）——
+ *
+ * ```js
+ * (moduleName.startsWith("@") ? moduleName.slice(moduleName.indexOf("/") + 1) : moduleName)
+ *   .replace(/^cordis:/, "").replace(/^cordis-plugin-/, "").replace(/^dsh-(?:host-|client-)?/, "")
+ * ```
+ *
+ * 也就是：去掉 npm scope，再去掉 `cordis:` / `cordis-plugin-` / `dsh-`（含 `dsh-host-` /
+ * `dsh-client-`）前缀。**只用于设置页显示**，详情里照旧给完整模块名（官方也是这么分的）。
+ */
+internal fun dshModuleShortName(moduleName: String): String {
+    val withoutScope = if (moduleName.startsWith("@")) {
+        val slash = moduleName.indexOf('/')
+        if (slash < 0) moduleName else moduleName.substring(slash + 1)
+    } else {
+        moduleName
+    }
+    return withoutScope
+        .removePrefix("cordis:")
+        .removePrefix("cordis-plugin-")
+        .removePrefix("dsh-host-")
+        .removePrefix("dsh-client-")
+        .removePrefix("dsh-")
 }

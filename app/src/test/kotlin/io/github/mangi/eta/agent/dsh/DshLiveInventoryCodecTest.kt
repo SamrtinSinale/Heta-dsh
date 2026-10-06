@@ -145,7 +145,110 @@ class DshLiveInventoryCodecTest {
         assertEquals("reloading", ready.entries[0].fiberPhase)
     }
 
+    @Test
+    fun rowKeyStripsTheIncludePrefixAndFallsBackToTheModuleName() {
+        // 真形状：Loader 的 id 带 `include:`，预设组合行里那条不一定带 —— 剥掉前缀才比得上。
+        assertEquals("tool-plugin-manager", dshLiveRowKey("include:tool-plugin-manager", null))
+        assertEquals("tool-plugin-manager", dshLiveRowKey("TOOL-PLUGIN-MANAGER", null))
+        // 没有 id（或只有空白）才退回模块名；模块名也统一小写。
+        assertEquals("m", dshLiveRowKey(null, "M"))
+        assertEquals("m", dshLiveRowKey("   ", "m"))
+        assertEquals("", dshLiveRowKey(null, null))
+    }
+
+    @Test
+    fun presetProvidersIndexMatchesGlobalRowsAcrossTheIncludePrefix() {
+        val presets = listOf(
+            preset(id = "standard", rows = listOf(row(entryId = "tool-plugin-manager"))),
+            preset(
+                id = "ptc",
+                rows = listOf(
+                    // 同一个预设重复给同一行：只记一次。
+                    row(entryId = "include:tool-plugin-manager"),
+                    row(entryId = "include:tool-plugin-manager"),
+                ),
+            ),
+        )
+
+        val providers = dshLivePresetProviders(presets)
+        val globalKey = dshLiveRowKey("include:tool-plugin-manager", MODULE_NAME)
+
+        // 全局清单那条 id 带前缀、预设那条不带 —— 两边都要落到同一个键上。
+        assertEquals(listOf("standard", "ptc"), providers[globalKey])
+        // 没有 id 的行退回模块名，同样对得上。
+        val byModuleName = dshLivePresetProviders(
+            listOf(preset(id = "standard", rows = listOf(row(entryId = null)))),
+        )
+        assertEquals(listOf("standard"), byModuleName[dshLiveRowKey(null, MODULE_NAME)])
+    }
+
+    private fun preset(id: String, rows: List<DshLivePresetRow>) = DshLivePreset(
+        id = id,
+        name = id,
+        isDefault = false,
+        broken = null,
+        rows = rows,
+    )
+
+    private fun row(entryId: String?) = DshLivePresetRow(
+        entryId = entryId,
+        moduleName = MODULE_NAME,
+        enabled = true,
+        conditional = false,
+        condition = null,
+        fiberPhase = "active",
+        patchId = null,
+    )
+
+    @Test
+    fun readsTheLocalizedMetaTitleAndDescription() {
+        // 官方的 `meta`：title / description 各是"字面串或 locale → 文案"（LocalizedText）。
+        val ready = ready(
+            "HETA-INVENTORY-JSON:{\"entries\":[{\"entryId\":\"include:typert-loader\"," +
+                "\"moduleName\":\"@deepseek-ai/dsh-typert-loader\",\"enabled\":true,\"fiberPhase\":\"active\"," +
+                "\"meta\":{\"title\":{\"en\":\"typert-loader\",\"zh-Hans\":\"Typert 载入器\"}," +
+                "\"description\":\"Loader integration for generated Typert package contributions\"}}]," +
+                "\"timedOut\":false}\n",
+        )
+
+        val entry = ready.entries[0]
+        assertEquals("typert-loader", entry.title?.resolve(listOf("en")))
+        // 按偏好顺序取：zh-Hans 有就用它。
+        assertEquals("Typert 载入器", entry.title?.resolve(listOf("zh-Hans", "en")))
+        // 繁体没有单独一份时退到 zh-Hans（官方字典里也只有 zh-Hans 与 en）。
+        assertEquals("Typert 载入器", entry.title?.resolve(listOf("zh-Hant", "zh-Hans", "en")))
+        assertEquals(
+            "Loader integration for generated Typert package contributions",
+            entry.description?.resolve(listOf("en")),
+        )
+    }
+
+    @Test
+    fun missingMetaStaysMissingInsteadOfInventingATitle() {
+        val ready = ready(
+            "HETA-INVENTORY-JSON:{\"entries\":[{\"entryId\":\"a\",\"moduleName\":\"m\"," +
+                "\"enabled\":true,\"fiberPhase\":\"active\"}],\"timedOut\":false}\n",
+        )
+
+        // 没有 meta 就是没有 —— 界面退回短包名，不在这里替它编一个标题。
+        assertNull(ready.entries[0].title)
+        assertNull(ready.entries[0].description)
+    }
+
+    @Test
+    fun shortNameFollowsTheOfficialClientRules() {
+        // 逐字照官方 client.js 那段：去 npm scope，再去 cordis: / cordis-plugin- / dsh-（含 host/client）。
+        assertEquals("typert-loader", dshModuleShortName("@deepseek-ai/dsh-typert-loader"))
+        assertEquals("plugin-manager/tools", dshModuleShortName("@deepseek-ai/dsh-plugin-manager/tools"))
+        assertEquals("include", dshModuleShortName("cordis:include"))
+        assertEquals("hmr", dshModuleShortName("cordis-plugin-hmr"))
+        assertEquals("plugin-manager", dshModuleShortName("dsh-host-plugin-manager"))
+        assertEquals("plain", dshModuleShortName("plain"))
+    }
+
     private companion object {
+
+        const val MODULE_NAME = "@deepseek-ai/dsh-plugin-manager/tools"
 
         const val MARKER_LINE = "HETA-INVENTORY-JSON:{\"entries\":[" +
             "{\"entryId\":\"include\",\"moduleName\":\"cordis:include\",\"enabled\":true,\"fiberPhase\":\"active\"}," +

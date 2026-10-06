@@ -1395,7 +1395,6 @@
   <string name="extensions_live_loading">Reading plugin status...</string>
   <string name="extensions_live_unavailable">Running status unavailable (%1$s); showing saved settings.</string>
   <string name="extensions_live_note">A switch shown as off here is off only for this temporary list.</string>
-  <string name="extensions_group_live">Plugins (running)</string>
   <string name="extensions_live_summary">%1$s · %2$s</string>
   <string name="extensions_run_phase_none">not running</string>
   <string name="extensions_run_phase_pending">waiting</string>
@@ -1420,4 +1419,12 @@
   <string name="extensions_preset_set_default">Set as new task default</string>
   <string name="extensions_preset_broken">Failed to load</string>
   <string name="extensions_preset_broken_summary">This preset cannot be loaded right now: %1$s</string>
+  <string name="extensions_group_global">Global plugins</string>
+  <string name="extensions_group_session">Session plugins</string>
+  <string name="extensions_preset_view">Choose which preset to view</string>
+  <string name="extensions_preset_group_note">Provided by this preset for the session; the preset manages them, so they cannot be switched here.</string>
+  <string name="extensions_preset_row_readonly">The preset manages this row; it cannot be switched on its own.</string>
+  <string name="extensions_row_provided_by_preset">Provided by preset: %1$s</string>
+  <string name="extensions_group_expand">Expand</string>
+  <string name="extensions_group_collapse">Collapse</string>
 </resources>
