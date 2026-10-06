@@ -907,9 +907,9 @@ private fun DshPresetProvidedRow(row: DshLivePresetRow, presetId: String?) {
     var expanded by remember(row.entryId, row.moduleName) { mutableStateOf(false) }
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
+    // 同 DshLiveSwitchRow，见 [dshRowTitle]。
     val preferred = dshLocalePreference(locale)
-    // 同 DshLiveSwitchRow：有官方标题用标题，没有就用**条目编号**（预设行没给编号时才退回模块名）。
-    val title = row.title?.resolve(preferred) ?: row.entryId ?: row.moduleName
+    val title = dshRowTitle(title = row.title, entryId = row.entryId, moduleName = row.moduleName)
     val description = row.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
     // 行上只写"不正常"的那几件（同 DshLiveSwitchRow 的口径）：来自哪个预设（搜索时）/ 已停用 /
     // 视条件而定 / 运行状态；标题与短 id 相同时不再重复写 id（官方同一条）。
@@ -1004,14 +1004,10 @@ private fun DshLiveSwitchRow(
     val toggleable = switchable && blocked == null && row != null && !store.working
     val configState = configStateLabel(store.enabledFor(entry))
     val runtimeState = runtimeStateLabel(entry.fiberPhase)
-    // 行上显示**条目编号**。
-    //
-    // 真机反馈（说了很多次，我前几版都理解反了）：`@deepseek-ai/dsh-plugin-manager/tools` 这一行
-    // 要显示成 `include:tool-plugin-manager`、`cordis:include` 那行显示成 `include` ——
-    // **不是**完整包名，也**不是**短名，更不是"完整包名 + 下面再挂一行条目编号"。
-    // 官方元数据带标题时优先用标题；完整包名留在展开详情里（那里本来就有"完整名称"一行）。
+    // 标题怎么取见 [dshRowTitle]：有官方标题用官方标题（字面串要走一遍短名规则），
+    // 没有就用**条目编号**（`include:tool-plugin-manager` 这种），完整包名只留在展开详情里。
     val preferred = dshLocalePreference(LocalConfiguration.current.locales[0])
-    val title = entry.title?.resolve(preferred) ?: entry.entryId
+    val title = dshRowTitle(title = entry.title, entryId = entry.entryId, moduleName = entry.moduleName)
     val description = entry.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
     // 文件层说它是开着的、这一轮却读到关着 —— 那是**探针**为了腾出 stdio 自己关掉的
     //（见 DshInventoryProbe），真实对话里它是开着的。以前这层意思靠页面顶部一条小灰字解释，
@@ -1200,6 +1196,33 @@ private fun runtimeStateLabel(phase: String?): String = when (phase) {
 
 // 预设行的逐条状态（`presetRowState`）随"卡片式预设"一起删了：页面上不再逐行列出组合，
 // 那部分是 29×4 行的噪声。预设组合行仍然被解析（DshLivePresetRow），只是不画。
+
+/**
+ * 一行插件的**标题**：官方那条取法。
+ *
+ * 官方 `pluginText` 写的是：
+ * ```
+ * title: typeof title === "object" ? resolveText(title) : moduleShortName(title ?? row.moduleName)
+ * ```
+ * 也就是：
+ *   · 本地化**表**（对象）→ 按当前语言取原文；
+ *   · **字面串** → 过一遍短名规则（[dshModuleShortName]）—— 它常常就是包名：真机反馈的
+ *     `@deepseek-ai/dsh-persona` 就属于这一类，元数据里的 title 是个字面串，官方显示 `persona`；
+ *   · 两者都没有（虚拟模块 / 组合行，例如 `cordis:include`）→ 用**条目编号**
+ *     （`include`、`include:tool-plugin-manager`），**不是**完整包名。
+ *
+ * 完整包名只在展开详情里出现（"完整名称"那一行）。
+ */
+@Composable
+private fun dshRowTitle(title: DshLocalizedText?, entryId: String?, moduleName: String): String {
+    val preferred = dshLocalePreference(LocalConfiguration.current.locales[0])
+    val fallback = entryId?.takeIf { it.isNotBlank() } ?: moduleName
+    return when (title) {
+        null -> fallback
+        is DshLocalizedText.Literal -> dshModuleShortName(title.text).ifBlank { fallback }
+        is DshLocalizedText.Localized -> title.resolve(preferred)?.takeIf { it.isNotBlank() } ?: fallback
+    }
+}
 
 /**
  * 官方 `LocalizedText` 的取值顺序。
