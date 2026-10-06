@@ -9,7 +9,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -33,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -60,6 +64,7 @@ import io.github.mangi.eta.agent.dsh.dshLivePresetProviders
 import io.github.mangi.eta.agent.dsh.dshModuleShortName
 import io.github.mangi.eta.agent.dsh.dshLiveRowKey
 import io.github.mangi.eta.ui.components.EtaPreference
+import io.github.mangi.eta.ui.components.rememberPressHighlight
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupItem
@@ -814,11 +819,21 @@ private fun DshPresetPicker(
     val current = presets.firstOrNull { it.id == viewedId }
         ?.let { DshPresetGuides.name(context, it.id, locale) ?: it.name }
         ?: viewedId
+    // 按下色块自己画成**圆润的胶囊**：主题那套 indication 画出来是铺满整行的矩形（真机反馈
+    // "会话插件点击标准模式是矩形灰色色块，给他改得圆润一点"）。形状与预设行同一套口径。
+    val interaction = remember { MutableInteractionSource() }
+    val highlight = rememberPressHighlight(interaction)
+    val pill = RoundedCornerShape(percent = 50)
     Box {
         Row(
             modifier = Modifier
-                .clickable { showMenu = true }
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clip(pill)
+                .background(
+                    MiuixTheme.colorScheme.onSurface.copy(alpha = 0.10f * highlight),
+                    pill,
+                )
+                .clickable(interactionSource = interaction, indication = null) { showMenu = true }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
                 .semantics { contentDescription = description },
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -892,9 +907,9 @@ private fun DshPresetProvidedRow(row: DshLivePresetRow, presetId: String?) {
     var expanded by remember(row.entryId, row.moduleName) { mutableStateOf(false) }
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
+    // 同 DshLiveSwitchRow，见 [dshRowTitle]。
     val preferred = dshLocalePreference(locale)
-    // 官方那套：有元数据用元数据的标题/说明，没有就退回**短包名**（官方也只给设置页用短名）。
-    val title = row.title?.resolve(preferred) ?: dshModuleShortName(row.moduleName)
+    val title = dshRowTitle(title = row.title, entryId = row.entryId, moduleName = row.moduleName)
     val description = row.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
     // 行上只写"不正常"的那几件（同 DshLiveSwitchRow 的口径）：来自哪个预设（搜索时）/ 已停用 /
     // 视条件而定 / 运行状态；标题与短 id 相同时不再重复写 id（官方同一条）。
@@ -989,9 +1004,10 @@ private fun DshLiveSwitchRow(
     val toggleable = switchable && blocked == null && row != null && !store.working
     val configState = configStateLabel(store.enabledFor(entry))
     val runtimeState = runtimeStateLabel(entry.fiberPhase)
-    // 官方那页显示的是标题 + 说明（`pluginPackages` 的本地化元数据），没有才退回短包名。
+    // 标题怎么取见 [dshRowTitle]：有官方标题用官方标题（字面串要走一遍短名规则），
+    // 没有就用**条目编号**（`include:tool-plugin-manager` 这种），完整包名只留在展开详情里。
     val preferred = dshLocalePreference(LocalConfiguration.current.locales[0])
-    val title = entry.title?.resolve(preferred) ?: dshModuleShortName(entry.moduleName)
+    val title = dshRowTitle(title = entry.title, entryId = entry.entryId, moduleName = entry.moduleName)
     val description = entry.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
     // 文件层说它是开着的、这一轮却读到关着 —— 那是**探针**为了腾出 stdio 自己关掉的
     //（见 DshInventoryProbe），真实对话里它是开着的。以前这层意思靠页面顶部一条小灰字解释，
@@ -1182,6 +1198,33 @@ private fun runtimeStateLabel(phase: String?): String = when (phase) {
 // 那部分是 29×4 行的噪声。预设组合行仍然被解析（DshLivePresetRow），只是不画。
 
 /**
+ * 一行插件的**标题**：官方那条取法。
+ *
+ * 官方 `pluginText` 写的是：
+ * ```
+ * title: typeof title === "object" ? resolveText(title) : moduleShortName(title ?? row.moduleName)
+ * ```
+ * 也就是：
+ *   · 本地化**表**（对象）→ 按当前语言取原文；
+ *   · **字面串** → 过一遍短名规则（[dshModuleShortName]）—— 它常常就是包名：真机反馈的
+ *     `@deepseek-ai/dsh-persona` 就属于这一类，元数据里的 title 是个字面串，官方显示 `persona`；
+ *   · 两者都没有（虚拟模块 / 组合行，例如 `cordis:include`）→ 用**条目编号**
+ *     （`include`、`include:tool-plugin-manager`），**不是**完整包名。
+ *
+ * 完整包名只在展开详情里出现（"完整名称"那一行）。
+ */
+@Composable
+private fun dshRowTitle(title: DshLocalizedText?, entryId: String?, moduleName: String): String {
+    val preferred = dshLocalePreference(LocalConfiguration.current.locales[0])
+    val fallback = entryId?.takeIf { it.isNotBlank() } ?: moduleName
+    return when (title) {
+        null -> fallback
+        is DshLocalizedText.Literal -> dshModuleShortName(title.text).ifBlank { fallback }
+        is DshLocalizedText.Localized -> title.resolve(preferred)?.takeIf { it.isNotBlank() } ?: fallback
+    }
+}
+
+/**
  * 官方 `LocalizedText` 的取值顺序。
  *
  * 官方那套 locale 键是 `en` / `zh-Hans` 这类（客户端字典里只有 `zh-Hans` 与 `en`），繁体没有
@@ -1203,10 +1246,14 @@ private fun dshLocalePreference(locale: Locale): List<String> = when (locale.lan
 }
 
 /**
- * 官方那条：卡片显示条目 id **仅当**它（去掉 `include:` 之后）与标题不同。
+ * 条目编码那一行。
  *
- * 同一个模块在 Loader 里可能出现多次（不同 include 行），标题一样、id 不一样 —— 这时 id 就是
- * 唯一的区分。而 id 与标题相同时再写一遍只是噪声。
+ * **原样显示 `entryId`**（含 `include:` 前缀），不再像官方那样把它省掉。真机反馈原话：
+ * "cordis:include 显示条目编码 include，@deepseek-ai/dsh-plugin-manager/tools 显示成
+ * include:tool-plugin-manager —— 让你把完整名字和条目编码都放到一块儿"。
+ *
+ * 所以行上是三样东西，一个都不少：**完整模块名**（标题）、说明、**完整条目编码**（这一行）。
+ * 标题与条目编码相同时（模块名本身就是那条 include 行）才不重复写。
  */
 private fun dshEntryIdLine(entryId: String?, title: String): String? =
-    entryId?.removePrefix("include:")?.takeIf { it != title }
+    entryId?.takeIf { it != title }
