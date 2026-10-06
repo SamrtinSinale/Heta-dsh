@@ -9,7 +9,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -33,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -60,6 +64,7 @@ import io.github.mangi.eta.agent.dsh.dshLivePresetProviders
 import io.github.mangi.eta.agent.dsh.dshModuleShortName
 import io.github.mangi.eta.agent.dsh.dshLiveRowKey
 import io.github.mangi.eta.ui.components.EtaPreference
+import io.github.mangi.eta.ui.components.rememberPressHighlight
 import io.github.mangi.eta.ui.components.EtaPreferenceDivider
 import io.github.mangi.eta.ui.components.EtaPreferenceGroup
 import io.github.mangi.eta.ui.components.EtaPreferenceGroupItem
@@ -814,11 +819,21 @@ private fun DshPresetPicker(
     val current = presets.firstOrNull { it.id == viewedId }
         ?.let { DshPresetGuides.name(context, it.id, locale) ?: it.name }
         ?: viewedId
+    // 按下色块自己画成**圆润的胶囊**：主题那套 indication 画出来是铺满整行的矩形（真机反馈
+    // "会话插件点击标准模式是矩形灰色色块，给他改得圆润一点"）。形状与预设行同一套口径。
+    val interaction = remember { MutableInteractionSource() }
+    val highlight = rememberPressHighlight(interaction)
+    val pill = RoundedCornerShape(percent = 50)
     Box {
         Row(
             modifier = Modifier
-                .clickable { showMenu = true }
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clip(pill)
+                .background(
+                    MiuixTheme.colorScheme.onSurface.copy(alpha = 0.10f * highlight),
+                    pill,
+                )
+                .clickable(interactionSource = interaction, indication = null) { showMenu = true }
+                .padding(horizontal = 10.dp, vertical = 4.dp)
                 .semantics { contentDescription = description },
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1207,10 +1222,14 @@ private fun dshLocalePreference(locale: Locale): List<String> = when (locale.lan
 }
 
 /**
- * 官方那条：卡片显示条目 id **仅当**它（去掉 `include:` 之后）与标题不同。
+ * 条目编码那一行。
  *
- * 同一个模块在 Loader 里可能出现多次（不同 include 行），标题一样、id 不一样 —— 这时 id 就是
- * 唯一的区分。而 id 与标题相同时再写一遍只是噪声。
+ * **原样显示 `entryId`**（含 `include:` 前缀），不再像官方那样把它省掉。真机反馈原话：
+ * "cordis:include 显示条目编码 include，@deepseek-ai/dsh-plugin-manager/tools 显示成
+ * include:tool-plugin-manager —— 让你把完整名字和条目编码都放到一块儿"。
+ *
+ * 所以行上是三样东西，一个都不少：**完整模块名**（标题）、说明、**完整条目编码**（这一行）。
+ * 标题与条目编码相同时（模块名本身就是那条 include 行）才不重复写。
  */
 private fun dshEntryIdLine(entryId: String?, title: String): String? =
-    entryId?.removePrefix("include:")?.takeIf { it != title }
+    entryId?.takeIf { it != title }
