@@ -1346,7 +1346,6 @@
   <string name="extensions_group_problems">設定檔裡的問題</string>
   <string name="extensions_bundle_rows">%1$d 行外掛</string>
   <string name="extensions_row_unresolved">看不出它是開還是關。</string>
-  <string name="extensions_row_mentioned_by">另外還被 %1$s 改過</string>
   <string name="extensions_message_saved">設定已儲存，將於下次工作階段生效。</string>
   <string name="extensions_message_unchanged">目前已是該狀態，未做改動。</string>
   <string name="extensions_write_failed">寫入失敗：%1$s</string>
@@ -1370,11 +1369,11 @@
   <string name="extensions_run_phase_unloading">停止中</string>
   <string name="extensions_detail_entry_id">條目編號</string>
   <string name="extensions_detail_runtime_state">執行狀態</string>
-  <string name="extensions_live_no_patch_row">這一行的設定由執行階段自己管，這裡改不了。</string>
-  <string name="extensions_live_not_in_layer">設定檔裡沒有這一行，這裡改不了。</string>
+  <string name="extensions_live_no_patch_row">該項的設定由執行階段管理，此處無法變更。</string>
+  <string name="extensions_live_not_in_layer">該項不在設定檔中，此處無法變更。</string>
   <string name="extensions_preset_effect">切換後下一則訊息就生效，不用開新對話。</string>
   <string name="extensions_preset_custom">想自己做一個模式：切到「創造模式」，讓 Agent 幫你寫一個。</string>
-  <string name="extensions_live_no_patch_id">這一行沒有編號，這裡改不了。</string>
+  <string name="extensions_live_no_patch_id">該項缺少項目編號，此處無法變更。</string>
   <string name="extensions_group_presets">預設</string>
   <string name="extensions_preset_rows">%1$d 行</string>
   <string name="extensions_preset_default">預設</string>
@@ -1390,7 +1389,6 @@
   <string name="extensions_preset_view">選擇要看哪個預設</string>
   <string name="extensions_preset_group_note">這些行由這個預設按工作階段提供，由預設統一管理，這裡不能單獨開關。</string>
   <string name="extensions_preset_row_readonly">這一行由預設統一管理，不能單獨開關。</string>
-  <string name="extensions_row_provided_by_preset">由預設提供：%1$s</string>
   <string name="extensions_group_expand">展開</string>
   <string name="extensions_group_collapse">收合</string>
   <string name="action_export">匯出</string>

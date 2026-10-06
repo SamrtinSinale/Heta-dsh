@@ -1358,7 +1358,6 @@
   <string name="extensions_group_problems">配置文件里的问题</string>
   <string name="extensions_bundle_rows">%1$d 行插件</string>
   <string name="extensions_row_unresolved">看不出它是开还是关。</string>
-  <string name="extensions_row_mentioned_by">另外还被 %1$s 改过</string>
   <string name="extensions_message_saved">配置已保存，将于下次会话生效。</string>
   <string name="extensions_message_unchanged">当前已是该状态，未做改动。</string>
   <string name="extensions_write_failed">写入失败：%1$s</string>
@@ -1382,11 +1381,11 @@
   <string name="extensions_run_phase_unloading">停止中</string>
   <string name="extensions_detail_entry_id">条目编号</string>
   <string name="extensions_detail_runtime_state">运行状态</string>
-  <string name="extensions_live_no_patch_row">这一行的配置由运行时自己管，这里改不了。</string>
-  <string name="extensions_live_not_in_layer">配置文件里没有这一行，这里改不了。</string>
+  <string name="extensions_live_no_patch_row">该项的配置由运行时管理，此处无法更改。</string>
+  <string name="extensions_live_not_in_layer">该项不在配置文件中，此处无法更改。</string>
   <string name="extensions_preset_effect">切换后下一条消息就生效，不用开新对话。</string>
   <string name="extensions_preset_custom">想自己做一个模式：切到「创造模式」，让 Agent 帮你写一个。</string>
-  <string name="extensions_live_no_patch_id">这一行没有编号，这里改不了。</string>
+  <string name="extensions_live_no_patch_id">该项缺少条目编号，此处无法更改。</string>
   <string name="extensions_group_presets">预设</string>
   <string name="extensions_preset_rows">%1$d 行</string>
   <string name="extensions_preset_default">默认</string>
@@ -1402,7 +1401,6 @@
   <string name="extensions_preset_view">选择要看哪个预设</string>
   <string name="extensions_preset_group_note">这些行由这个预设按会话提供，由预设统一管理，这里不能单独开关。</string>
   <string name="extensions_preset_row_readonly">这一行由预设统一管理，不能单独开关。</string>
-  <string name="extensions_row_provided_by_preset">由预设提供：%1$s</string>
   <string name="extensions_group_expand">展开</string>
   <string name="extensions_group_collapse">收起</string>
 </resources>

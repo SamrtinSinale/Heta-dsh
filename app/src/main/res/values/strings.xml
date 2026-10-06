@@ -1380,7 +1380,6 @@
   <string name="extensions_group_problems">Problems in the settings</string>
   <string name="extensions_bundle_rows">%1$d plugin rows</string>
   <string name="extensions_row_unresolved">Cannot tell whether this is on or off.</string>
-  <string name="extensions_row_mentioned_by">Also changed by %1$s</string>
   <string name="extensions_message_saved">Saved. It takes effect in the next session.</string>
   <string name="extensions_message_unchanged">Already in that state; no change was made.</string>
   <string name="extensions_write_failed">Could not save: %1$s</string>
@@ -1424,7 +1423,6 @@
   <string name="extensions_preset_view">Choose which preset to view</string>
   <string name="extensions_preset_group_note">Provided by this preset for the session; the preset manages them, so they cannot be switched here.</string>
   <string name="extensions_preset_row_readonly">The preset manages this row; it cannot be switched on its own.</string>
-  <string name="extensions_row_provided_by_preset">Provided by preset: %1$s</string>
   <string name="extensions_group_expand">Expand</string>
   <string name="extensions_group_collapse">Collapse</string>
 </resources>

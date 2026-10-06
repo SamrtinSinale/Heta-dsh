@@ -106,7 +106,7 @@ internal class DshPluginInventory(
                 problem = read.problem,
                 // 官方的口径：这一层的行里只要碰到管理模块，这一层就是"管理必需"，不许关。
                 readOnlyReason = if (read.rows.any { it.moduleName in PROTECTED_MODULES }) {
-                    "它里面有 dsh 的管理/入口模块，关掉运行时自己就起不来"
+                    "该包包含运行时的管理模块；禁用后运行时将无法启动。"
                 } else {
                     null
                 },
@@ -195,11 +195,10 @@ internal class DshPluginInventory(
                     //（例如 hmr）本来就是 profile 自己关着的，而保护名单管的是"别在这一页关掉它"。
                     // 真机反馈"被关掉了没法运行我还没法控制"，就是把两件事读成了一句。
                     it.moduleName in PROTECTED_MODULES ->
-                        "官方把它列为管理/入口模块（关掉运行时自己就起不来），这一页不给开关；" +
-                            "它现在是开是关，由 profile 补丁层决定"
-                    it.moduleName == null -> "这一行没有模块名，定位不到它是哪个插件"
+"该项为运行时的管理模块；禁用后运行时将无法启动，因此此处不提供开关。"
+                    it.moduleName == null -> "该项缺少模块名，无法定位到具体插件。"
                     // 放在最后：官方那 8 个管理模块属于"关掉就起不来"，理由更硬，先报那一个。
-                    it.patchId in presetManagedRowIds -> "这一行由预设统一管理，不能单独开关"
+                    it.patchId in presetManagedRowIds -> "该项由预设统一管理，此处不提供单独开关。"
                     else -> null
                 },
             )
