@@ -114,6 +114,15 @@ mkdir -p "$(dirname "$CRED")"
 printf 'export DEEPSEEK_API_KEY=sk-smoke\nexport DEEPSEEK_BASE_URL=http://127.0.0.1:%s\n' "$PORT" > "$CRED"
 chmod 600 "$CRED"
 
+# 状态出口插件：真 App 的启动路径会把它写进 runtime root（DshRuntimeConfig.writeJoinPlugin），
+# 而单测导出的那份 rootfs 只带 overlay 与启动脚本 —— 端到端要验「会话进程写清单」这条路，
+# 就得自己把它放进去（同上面那个凭据文件的做法）。第 ⑫ 步断言的就是它写出来的文件。
+STATUS_PLUGIN="$REPO/app/src/main/assets/heta-status.mjs"
+[ -f "$STATUS_PLUGIN" ] || { echo "FAIL: 缺少状态插件资产 $STATUS_PLUGIN"; exit 1; }
+mkdir -p "$ROOT/opt/dsh"
+cp -f "$STATUS_PLUGIN" "$ROOT/opt/dsh/heta-status.mjs"
+chmod 644 "$ROOT/opt/dsh/heta-status.mjs"
+
 echo "⑤ 跑一个真回合（initialize → session/new → prompt → 工具调用）"
 # 用 unshare 起一个假 root 命名空间：chroot、/dev、/proc 和 binfmt 都在里面做，不碰宿主。
 #
@@ -419,13 +428,41 @@ PY
 [ $? -eq 0 ] && mode_ok=1
 
 echo
+# ⑫ 状态出口插件：会话进程要把**活的**插件清单写成文件（App 读它，不再为看一眼清单再起一个 dsh）。
+#    断言的是"文件在、协议前缀对、entries 非空、不是超时快照"——内容与探针那份同源，不在这里重复比。
+INVENTORY_FILE="$ROOT/root/.dsh/heta-inventory.json"
+inv_ok=0
+if [ -f "$INVENTORY_FILE" ]; then
+  inv_ok="$(python3 - "$INVENTORY_FILE" <<'PY'
+import json, sys
+marker = "HETA-INVENTORY-JSON:"
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError:
+    print(0); raise SystemExit
+if marker not in text:
+    print(0); raise SystemExit
+try:
+    data = json.loads(text.split(marker, 1)[1].splitlines()[0])
+except ValueError:
+    print(0); raise SystemExit
+entries = data.get("entries") or []
+print(1 if len(entries) > 1 and data.get("timedOut") is False else 0)
+PY
+)"
+  echo "⑫ 状态出口插件：$INVENTORY_FILE（$(wc -c < "$INVENTORY_FILE") 字节，断言=${inv_ok:-0}）"
+else
+  echo "⑫ 状态出口插件：$INVENTORY_FILE 不存在 ✗"
+fi
+
+echo
 if [ "$acp_status" -eq 0 ] && [ "$round2_status" -eq 0 ] && [ "$file_ok" -eq 1 ] \
    && [ "$cred_ok" -eq 1 ] && [ "$history_ok" -eq 1 ] && [ "$round3_status" -eq 0 ] \
-   && [ "$mode_ok" -eq 1 ]; then
-  echo "====> 端到端通过：工具真执行、回合正常收尾、续接后人格已刷新且历史原样、计划与目标模式都真的生效"
+   && [ "$mode_ok" -eq 1 ] && [ "${inv_ok:-0}" -eq 1 ]; then
+  echo "====> 端到端通过：工具真执行、回合正常收尾、续接后人格已刷新且历史原样、计划与目标模式都真的生效、活清单被写出来"
   exit 0
 fi
-echo "====> 端到端失败（首回合=$acp_status 续接=$round2_status 文件=$file_ok 凭据=$cred_ok 续接语义=$history_ok 模式回合=$round3_status 模式=$mode_ok）"
+echo "====> 端到端失败（首回合=$acp_status 续接=$round2_status 文件=$file_ok 凭据=$cred_ok 续接语义=$history_ok 模式回合=$round3_status 模式=$mode_ok 活清单=${inv_ok:-0}）"
 if [ "$round3_status" != 0 ]; then
   echo "--- 模式回合日志尾部 ---"; tail -30 "$TMP/acp3.log" 2>/dev/null
 fi

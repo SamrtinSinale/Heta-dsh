@@ -24,7 +24,7 @@
  * config（覆盖层那一行可以给的键，都可以不给）：
  *   intervalMs: number   轮询间隔，默认 3000
  */
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export const name = 'heta-status'
@@ -34,6 +34,16 @@ export const inject = ['loader']
 
 const DSH_HOME = process.env.DSH_HOME ?? '/root/.dsh'
 const INVENTORY_FILE = join(DSH_HOME, 'heta-inventory.json')
+
+/**
+ * 失败痕迹。
+ *
+ * 为什么需要它：dsh 的 logger 在 ACP profile 里 info/warn 全被吞掉（stderr 一个字都没有），
+ * 而这个插件的 `apply` 又是"尽力而为"（失败不能影响会话）—— 不留痕迹的话，"文件没写出来"
+ * 这件事在真机上就完全无从查起。所以：apply 一进来先写一条 stage=apply，publish 抛错写
+ * stage=publish + 堆栈，写成功了再把它删掉。
+ */
+const ERROR_FILE = join(DSH_HOME, 'heta-status-error.txt')
 
 /**
  * 与桥同一行协议前缀（`DshLiveInventoryCodec` 找的就是它）。
@@ -154,6 +164,8 @@ function signatureOf(snapshot) {
 }
 
 export function apply(ctx, config) {
+  // 先留一条"我进来了"：连 error 文件都没有 = apply 根本没被调用（插件没挂上 / 模块加载失败）。
+  writeJson(ERROR_FILE, { at: Date.now(), stage: 'apply' })
   const intervalMs =
     typeof config?.intervalMs === 'number' && config.intervalMs > 0
       ? config.intervalMs
@@ -171,9 +183,21 @@ export function apply(ctx, config) {
       if (signature === lastSignature) return
       if (writeJson(INVENTORY_FILE, { at: Date.now(), ...snapshot })) {
         lastSignature = signature
+        try {
+          rmSync(ERROR_FILE, { force: true })
+        } catch {}
       }
-    } catch {
+    } catch (error) {
       // 读不到就什么都不写：App 那边会退回探针（文件缺失 / 太旧都算"读不到"）。
+      // 但**要留证据** —— 否则这条路上出问题只能靠猜（真机上就是这么栽的一次）。
+      writeJson(ERROR_FILE, {
+        at: Date.now(),
+        stage: 'publish',
+        error: String((error && error.stack) || error),
+      })
+      try {
+        console.error('[heta-status] publish failed:', error)
+      } catch {}
     } finally {
       inFlight = false
     }
