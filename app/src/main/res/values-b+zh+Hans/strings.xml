@@ -1398,6 +1398,8 @@
   <string name="extensions_preset_broken">加载失败</string>
   <string name="extensions_preset_broken_summary">这个预设现在加载不了：%1$s</string>
   <string name="extensions_group_global">全局插件</string>
+  <string name="extensions_group_session">会话插件</string>
+  <string name="extensions_preset_view">选择要看哪个预设</string>
   <string name="extensions_preset_group_note">这些行由这个预设按会话提供，由预设统一管理，这里不能单独开关。</string>
   <string name="extensions_preset_row_readonly">这一行由预设统一管理，不能单独开关。</string>
   <string name="extensions_row_provided_by_preset">由预设提供：%1$s</string>

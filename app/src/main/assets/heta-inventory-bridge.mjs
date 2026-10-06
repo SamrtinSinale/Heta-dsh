@@ -9,8 +9,13 @@
  * 条目投影**照抄**那份 `readPluginInventory`：跳过 group 条目，取 `entry.id` /
  * `entry.options.name` / `!entry.disabled` / `entry.fiber.state`；Fiber 状态映射表
  * （0..5 → pending/loading/active/failed/null/unloading）也逐字照抄，`entry.fiber === undefined`
- * 时 phase 为 null（官方那行三元就是 null，映射表里的 null 是 DISPOSED=4）。官方还会带
- * `pluginPackages` 的显示名元数据，这里省掉 —— App 侧不用它，多带一份就要多维护一份。
+ * 时 phase 为 null（官方那行三元就是 null，映射表里的 null 是 DISPOSED=4）。
+ *
+ * **`meta` 也照官方带上**（本地化标题 + 说明，来自 `pluginPackages.metaOf(name, baseUrl)`）。
+ * 一开始这里省掉了它，理由是"App 侧不用" —— 真机反馈把这条理由推翻了：官方那页显示的是
+ * "typert-loader / Loader integration for generated Typert package contributions"，
+ * 而 Heta 只能显示一串 `@deepseek-ai/dsh-xxx` 加"已禁用"。`icon`（base64 data URL）仍然不带：
+ * 一百多条各塞一张图，探针那行 JSON 会涨到几兆。
  *
  * 每个条目**多带一个 `patchId`**（= `entry.options.id`），预设行尽量透传同名键。
  *
@@ -98,6 +103,21 @@ function patchIdField(value) {
 }
 
 /**
+ * 官方 `PluginLocalizedMeta` → 输出里那个键。
+ *
+ * 官方那行是 `...(meta === undefined ? {} : { meta })`，整份带出去（含 `icon`）。这里只带
+ * `title` / `description`：`icon` 是 base64 data URL，一百多条能把那行 JSON 顶到几兆，
+ * 而 App 这一版不画图标。
+ */
+function metaField(meta) {
+  if (meta === undefined || meta === null) return {}
+  const out = {}
+  if (meta.title !== undefined) out.title = meta.title
+  if (meta.description !== undefined) out.description = meta.description
+  return Object.keys(out).length === 0 ? {} : { meta: out }
+}
+
+/**
  * 预设挂不起来的原因 → 输出里那个键。
  *
  * **这个字段不能丢**：官方 `AgentPresetComposition.broken`（`composition-inventory.d.ts:41`）
@@ -114,19 +134,25 @@ function brokenField(value) {
 /** 照抄官方 `readPluginInventory` 的条目投影与预设投影（外加 App 开关要的 `patchId`）。 */
 async function readInventory(ctx) {
   const entries = []
+  // 显示元数据的来源：官方的 `pluginPackages` 服务（`metaOf(moduleName, baseUrl)`）。
+  // 没有这个服务时 `meta` 一律缺席 —— App 侧退回"短包名"，与官方同一条退路。
+  const packages = ctx.get('pluginPackages')
   for (const entry of ctx.loader.entries()) {
     if (entry.options.group) continue
+    const base = entry.parent?.tree?.ctx?.baseUrl
+    const meta = base === undefined ? undefined : packages?.metaOf(entry.options.name, base)
     entries.push({
       entryId: entry.id,
       moduleName: entry.options.name,
       enabled: !entry.disabled,
       fiberPhase: phaseOf(entry.fiber),
       ...patchIdField(entry.options.id),
+      ...metaField(meta),
     })
   }
   const presets = ctx.get('agentPresets')
   if (presets === undefined) return { entries, hasPresets: false }
-  return { entries, agentPresets: await readPresets(presets), hasPresets: true }
+  return { entries, agentPresets: await readPresets(presets, packages, ctx.baseUrl), hasPresets: true }
 }
 
 /**
@@ -137,7 +163,7 @@ async function readInventory(ctx) {
  * （带 `condition` 说明由谁决定）。这里不翻译、不归一 —— 翻译是 App 侧显示层的事，
  * 数据层擅自改写会让"到底哪种"无从查证。
  */
-async function readPresets(presets) {
+async function readPresets(presets, packages, baseUrl) {
   const compositions = await presets.compositionInventory()
   return compositions.map((composition) => ({
     id: composition.id,
@@ -147,6 +173,8 @@ async function readPresets(presets) {
     rows: (composition.rows ?? []).map(({ fiberState, ...row }) => ({
       ...row,
       fiberPhase: phaseOfState(fiberState),
+      // 预设行也照官方取元数据：官方用的是**插件自己的** baseUrl（`ctx.baseUrl`）。
+      ...metaField(baseUrl === undefined ? undefined : packages?.metaOf(row.moduleName, baseUrl)),
       // 预设行**只透传**：官方投影的 AgentPresetPluginRow 里没有补丁行 id 这个字段
       //（只有 entryId / moduleName / enabled / condition / fiberPhase），官方那边
       // listPlugins 也只覆盖 Loader 条目，预设组合行不参与写文件。行自己带了 `patchId`

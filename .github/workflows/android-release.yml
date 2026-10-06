@@ -210,13 +210,13 @@ jobs:
           echo "APK applicationId 校验通过：$apk_package"
 
           mkdir -p "$output_dir"
-          cp "$release_apk" "$output_dir/eta-${VERSION_NAME}-release.apk"
-          echo "release_path=$output_dir/eta-${VERSION_NAME}-release.apk" >> "$GITHUB_OUTPUT"
+          cp "$release_apk" "$output_dir/heta-${VERSION_NAME}-release.apk"
+          echo "release_path=$output_dir/heta-${VERSION_NAME}-release.apk" >> "$GITHUB_OUTPUT"
 
       - name: 上传 Release APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: eta-${{ steps.version.outputs.version_name }}-release-apk
+          name: heta-${{ steps.version.outputs.version_name }}-release-apk
           path: ${{ steps.apk.outputs.release_path }}
           archive: false
           if-no-files-found: error

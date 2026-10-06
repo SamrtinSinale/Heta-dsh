@@ -1386,6 +1386,8 @@
   <string name="extensions_preset_broken">載入失敗</string>
   <string name="extensions_preset_broken_summary">這個預設現在載入不了：%1$s</string>
   <string name="extensions_group_global">全域外掛</string>
+  <string name="extensions_group_session">工作階段外掛</string>
+  <string name="extensions_preset_view">選擇要看哪個預設</string>
   <string name="extensions_preset_group_note">這些行由這個預設按工作階段提供，由預設統一管理，這裡不能單獨開關。</string>
   <string name="extensions_preset_row_readonly">這一行由預設統一管理，不能單獨開關。</string>
   <string name="extensions_row_provided_by_preset">由預設提供：%1$s</string>

@@ -200,6 +200,52 @@ class DshLiveInventoryCodecTest {
         patchId = null,
     )
 
+    @Test
+    fun readsTheLocalizedMetaTitleAndDescription() {
+        // 官方的 `meta`：title / description 各是"字面串或 locale → 文案"（LocalizedText）。
+        val ready = ready(
+            "HETA-INVENTORY-JSON:{\"entries\":[{\"entryId\":\"include:typert-loader\"," +
+                "\"moduleName\":\"@deepseek-ai/dsh-typert-loader\",\"enabled\":true,\"fiberPhase\":\"active\"," +
+                "\"meta\":{\"title\":{\"en\":\"typert-loader\",\"zh-Hans\":\"Typert 载入器\"}," +
+                "\"description\":\"Loader integration for generated Typert package contributions\"}}]," +
+                "\"timedOut\":false}\n",
+        )
+
+        val entry = ready.entries[0]
+        assertEquals("typert-loader", entry.title?.resolve(listOf("en")))
+        // 按偏好顺序取：zh-Hans 有就用它。
+        assertEquals("Typert 载入器", entry.title?.resolve(listOf("zh-Hans", "en")))
+        // 繁体没有单独一份时退到 zh-Hans（官方字典里也只有 zh-Hans 与 en）。
+        assertEquals("Typert 载入器", entry.title?.resolve(listOf("zh-Hant", "zh-Hans", "en")))
+        assertEquals(
+            "Loader integration for generated Typert package contributions",
+            entry.description?.resolve(listOf("en")),
+        )
+    }
+
+    @Test
+    fun missingMetaStaysMissingInsteadOfInventingATitle() {
+        val ready = ready(
+            "HETA-INVENTORY-JSON:{\"entries\":[{\"entryId\":\"a\",\"moduleName\":\"m\"," +
+                "\"enabled\":true,\"fiberPhase\":\"active\"}],\"timedOut\":false}\n",
+        )
+
+        // 没有 meta 就是没有 —— 界面退回短包名，不在这里替它编一个标题。
+        assertNull(ready.entries[0].title)
+        assertNull(ready.entries[0].description)
+    }
+
+    @Test
+    fun shortNameFollowsTheOfficialClientRules() {
+        // 逐字照官方 client.js 那段：去 npm scope，再去 cordis: / cordis-plugin- / dsh-（含 host/client）。
+        assertEquals("typert-loader", dshModuleShortName("@deepseek-ai/dsh-typert-loader"))
+        assertEquals("plugin-manager/tools", dshModuleShortName("@deepseek-ai/dsh-plugin-manager/tools"))
+        assertEquals("include", dshModuleShortName("cordis:include"))
+        assertEquals("hmr", dshModuleShortName("cordis-plugin-hmr"))
+        assertEquals("plugin-manager", dshModuleShortName("dsh-host-plugin-manager"))
+        assertEquals("plain", dshModuleShortName("plain"))
+    }
+
     private companion object {
 
         const val MODULE_NAME = "@deepseek-ai/dsh-plugin-manager/tools"
