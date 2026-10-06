@@ -116,7 +116,20 @@ internal sealed interface DshLiveInventory {
      * 官方声明（见 [DshPresetPlane]），所以正常装机上这里会有四个预设。为空只可能出现在
      * "预设资产没装进去"或"注册表挂了"这两种情况下 —— 那时页面照旧只显示插件行。
      */
-    data class Ready(val entries: List<DshLiveEntry>, val presets: List<DshLivePreset>) : DshLiveInventory
+    data class Ready(val entries: List<DshLiveEntry>, val presets: List<DshLivePreset>) : DshLiveInventory {
+
+        /**
+         * 解析它的那段 JSON **原文**（不含 marker）。
+         *
+         * 为什么留着：App 要把活清单**落盘**缓存（进程级缓存活不过一次重启，而那正是"每次重启后
+         * 第一次点开扩展页都要等 ~27 秒"的来源）。落盘写原文、读回来走同一个 [DshLiveInventoryCodec.parse]
+         * —— 不用再写一个与解析器对称的序列化器，也就没有"两处漂移"这回事。
+         *
+         * 为什么是 body 属性而不是构造参数：它只是"这份清单从哪来"的附注，**不参与相等性**
+         *（单测里 `Ready(entries, presets)` 的比较照旧只看内容）。
+         */
+        var raw: String = ""
+    }
 
     /** 没读到。[reason] 是可读的原因，界面原样显示（必要时会被 [DshInventoryProbe] 附上 stderr 尾巴）。 */
     data class Failed(val reason: String) : DshLiveInventory
@@ -132,8 +145,13 @@ internal sealed interface DshLiveInventory {
  */
 internal object DshLiveInventoryCodec {
 
-    /** 桥的输出协议前缀；与 `heta-inventory-bridge.mjs` 里的 MARKER 是同一个字符串。 */
-    private const val MARKER = "HETA-INVENTORY-JSON:"
+    /**
+     * 桥的输出协议前缀；与 `heta-inventory-bridge.mjs` / `heta-status.mjs` 里的 MARKER 是同一个字符串。
+     *
+     * `internal` 而不是 `private`：[timestampOf] / [encode] 与探针、落盘缓存共用它 —— 三处各写一遍
+     * 字符串，改一处就会有一处悄悄读不到。
+     */
+    internal const val MARKER = "HETA-INVENTORY-JSON:"
 
     private const val TIMED_OUT = "timedOut"
     private const val ERROR = "error"
@@ -154,6 +172,7 @@ internal object DshLiveInventoryCodec {
     private const val IS_DEFAULT = "isDefault"
     private const val BROKEN = "broken"
     private const val ROWS = "rows"
+    private const val AT = "at"
 
     fun parse(stdout: String): DshLiveInventory {
         val marker = stdout.indexOf(MARKER)
@@ -182,8 +201,33 @@ internal object DshLiveInventoryCodec {
             // 显示成"没有插件"比直接说读不到更误导。
             return DshLiveInventory.Failed("桥打出来的清单是空的（dsh 的 Loader 至少有一条根条目）")
         }
-        return DshLiveInventory.Ready(entries = entries, presets = readPresets(payload.optJSONArray(PRESETS)))
+        // 原文一起留着：App 落盘缓存时直接写它，读回来还是这个解析器（见 [Ready.raw]）。
+        return DshLiveInventory.Ready(
+            entries = entries,
+            presets = readPresets(payload.optJSONArray(PRESETS)),
+        ).also { it.raw = line.trim() }
     }
+
+    /**
+     * 清单原文里的 `at`（会话插件写文件那一刻的墙上时间）；没有 marker、没有 `at`、不是数一律 0。
+     *
+     * 两处判"这份还新鲜吗"都用它：[DshInventoryProbe] 读会话写出的状态文件、[DshLiveInventoryCache]
+     * 读落盘那份缓存 —— 同一份原文、同一个判据，各写一遍就会漂移。
+     */
+    internal fun timestampOf(text: String): Long {
+        val marker = text.indexOf(MARKER)
+        if (marker < 0) return 0L
+        val line = text.substring(marker + MARKER.length).lineSequence().first()
+        return runCatching { JSONObject(line.trim()).optLong(AT, 0L) }.getOrDefault(0L)
+    }
+
+    /**
+     * 把一段清单原文再包成能被 [parse] 读回的形式（落盘缓存用）。
+     *
+     * 为什么不是"把这份清单重新序列化一遍"：那要再写一个与 [parse] 对称的序列化器，两处必然漂移。
+     * 原文本身就是最保真的形态，而且读回来走的还是同一个解析器。
+     */
+    internal fun encode(raw: String): String = MARKER + raw.trim() + "\n"
 
     private fun readEntries(array: JSONArray): List<DshLiveEntry> {
         val entries = ArrayList<DshLiveEntry>(array.length())

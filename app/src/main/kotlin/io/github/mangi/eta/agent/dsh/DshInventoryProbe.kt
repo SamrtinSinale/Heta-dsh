@@ -3,7 +3,6 @@ package io.github.mangi.eta.agent.dsh
 import android.content.Context
 import android.util.Log
 import java.io.File
-import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
@@ -120,21 +119,27 @@ internal object DshInventoryProbe {
      */
     private fun readStatusFile(root: File): DshLiveInventory.Ready? {
         // ① runtime 目录里那一份：普通文件读，毫秒级。**读不动的原因要留下来** ——
-        // 真机上"到底为什么没用这一份"以前只能猜（这一次就是栽在这里）。
+        // 真机上"到底为什么没用这一份"以前只能猜（3.0.8.14 就是栽在这里）。
         val shared = File(root, SHARED_RELATIVE)
         val sharedText = runCatching { shared.readText() }
-        lastSource = when {
-            sharedText.isFailure -> "shared-failed:" + describe(sharedText.exceptionOrNull()!!)
-            sharedText.getOrNull().isNullOrBlank() -> "shared-missing"
-            !statusIsFresh(sharedText.getOrNull()!!) -> "shared-stale"
-            else -> "shared-file"
-        }
-        sharedText.getOrNull()
+        val sharedReady = sharedText.getOrNull()
             ?.takeIf { it.isNotBlank() && statusIsFresh(it) }
             ?.let { text -> DshLiveInventoryCodec.parse(text) as? DshLiveInventory.Ready }
-            ?.let { return it }
-        // ② `$DSH_HOME` 那一份：root 私有，得走 su。
-        lastSource = "home-file"
+        if (sharedReady != null) {
+            lastSource = "shared-file"
+            return sharedReady
+        }
+        val miss = sharedMissReason(sharedText.getOrNull(), sharedText.exceptionOrNull())
+        // 在、但太旧 / 解析不了：`$DSH_HOME` 那份是**同一次 publish 写下去的同一份 body**，再走一次
+        // su 只会白等（真机上那一下可以到 15 秒）。读不到（缺失 / 没权限 / 没 marker）才值得试 su：
+        // 那几种情况下 home 那份有可能反而是好的。
+        if (miss == "shared-stale" || miss == "shared-broken") {
+            lastSource = "probe‹$miss›"
+            return null
+        }
+        // ② `$DSH_HOME` 那一份：root 私有，得走 su。**把"为什么没用上快的那条"带上** ——
+        // 否则界面上只看到"走了慢的那条"，看不到原因。
+        lastSource = "home-file‹$miss›"
         val file = File(root, STATUS_RELATIVE)
         val out = runCatching { File.createTempFile("dsh-status-", ".json") }.getOrNull() ?: return null
         return try {
@@ -160,13 +165,24 @@ internal object DshInventoryProbe {
     }
 
     /** `at` 在 [STATUS_MAX_AGE_MS] 之内才算新鲜；没有 `at`（或不是数）当旧。 */
-    private fun statusIsFresh(text: String): Boolean = runCatching {
-        val marker = text.indexOf("HETA-INVENTORY-JSON:")
-        if (marker < 0) return false
-        val json = text.substring(marker + "HETA-INVENTORY-JSON:".length).lineSequence().first()
-        val at = JSONObject(json).optLong("at", 0L)
-        at > 0L && System.currentTimeMillis() - at <= STATUS_MAX_AGE_MS
-    }.getOrDefault(false)
+    private fun statusIsFresh(text: String): Boolean {
+        val at = DshLiveInventoryCodec.timestampOf(text)
+        return at > 0L && System.currentTimeMillis() - at <= STATUS_MAX_AGE_MS
+    }
+
+    /**
+     * "runtime 目录里那份（快的那条路）为什么没用上"的一句话判据。
+     *
+     * 为什么要说出来：真机上只能看到"走了慢的那条"，看不到原因 —— 3.0.8.14 的真机反馈就是
+     * `[home-file]`，而"共享那份为什么没读到"全无线索。抽成纯函数是为了单测能钉住每个分支。
+     */
+    internal fun sharedMissReason(text: String?, failure: Throwable?): String = when {
+        failure != null -> "shared-failed:" + describe(failure)
+        text.isNullOrBlank() -> "shared-missing"
+        DshLiveInventoryCodec.timestampOf(text) <= 0L -> "shared-nomarker"
+        !statusIsFresh(text) -> "shared-stale"
+        else -> "shared-broken"
+    }
 
     /**
      * 读一次活清单。**不抛异常**：任何失败都变成 [DshLiveInventory.Failed]，
@@ -180,9 +196,15 @@ internal object DshInventoryProbe {
         }
         // 先看会话进程写出来的那份（同一个投影）；读不到 / 太旧 / 解析不了都直接往下走 ——
         // 下面那条探针照旧是兜底。`lastSource` 记下这次走的是哪条路，界面会写出来。
-        lastSource = "runtime"
+        lastSource = ""
         readStatusFile(root)?.let { return it }
-        lastSource = "probe"
+        // 走到这里说明要真起一次 dsh。**别把上面那条路的结论丢掉** —— 界面显示的正是它
+        //（`probe‹shared-missing›` 读作"状态文件里没有共享那份，于是只能真探一次"）。
+        lastSource = if (lastSource.startsWith("probe")) {
+            lastSource
+        } else {
+            "probe‹" + lastSource.substringAfter('‹', "no-status-file").removeSuffix("›") + "›"
+        }
         val logs = runCatching {
             File.createTempFile("dsh-inventory-out-", ".log") to
                 File.createTempFile("dsh-inventory-err-", ".log")

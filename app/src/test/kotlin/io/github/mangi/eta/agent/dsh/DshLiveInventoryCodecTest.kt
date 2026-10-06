@@ -261,6 +261,23 @@ class DshLiveInventoryCodecTest {
         assertTrue(ready.entries[0].enabled)
     }
 
+    @Test
+    fun timestampComesFromTheBodyAndEncodeRoundTrips() {
+        val line = "{\"at\":1790000000000,\"entries\":[{\"entryId\":\"include\"," +
+            "\"moduleName\":\"cordis:include\",\"enabled\":true,\"fiberPhase\":\"active\"}]," +
+            "\"hasPresets\":false,\"timedOut\":false}"
+
+        assertEquals(1790000000000L, DshLiveInventoryCodec.timestampOf("HETA-INVENTORY-JSON:$line\n"))
+        // 没有 marker、或没有 at：一律 0（调用方据此判"这份不能当依据"，而不是当成"刚刚写的"）。
+        assertEquals(0L, DshLiveInventoryCodec.timestampOf("没有 marker"))
+        assertEquals(0L, DshLiveInventoryCodec.timestampOf("HETA-INVENTORY-JSON:{\"entries\":[]}"))
+
+        // 落盘缓存写的是**原文**，读回来还是同一个解析器 —— 这一对函数就是"能写能读"的全部保证。
+        val reparsed = ready(DshLiveInventoryCodec.encode(line))
+        assertEquals("include", reparsed.entries[0].entryId)
+        assertEquals(line, reparsed.raw)
+    }
+
     private companion object {
 
         const val MODULE_NAME = "@deepseek-ai/dsh-plugin-manager/tools"

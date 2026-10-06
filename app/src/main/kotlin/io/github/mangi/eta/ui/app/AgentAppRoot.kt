@@ -118,13 +118,19 @@ fun AgentAppRoot(
     val uiScope = rememberCoroutineScope()
     val backStack = rememberNavBackStack<AppRoute>(AppRoute.Home)
     // 活清单**预热**：那份数据只能靠"真起一次 dsh"拿到（实测 ~27 秒），而扩展页要它才画得出
-    // 插件行。放在 App 起来时后台跑一次（缓存新鲜就什么都不做）—— 用户走到「设置 → 扩展」时
-    // 通常已经好了，不必在那儿干等。这是唯一一处与页面无关的探针，其余入口都在扩展页自己那边
-    //（见 DshExtensionsStore 的类头）。
+    // 插件行。放在 App 起来时后台跑一次 —— 用户走到「设置 → 扩展」时通常已经好了，不必在那儿干等。
+    // 这是唯一一处与页面无关的探针，其余入口都在扩展页自己那边（见 DshExtensionsStore 的类头）。
     LaunchedEffect(Unit) {
-        if (!DshLiveInventoryCache.isStale()) return@LaunchedEffect
+        // 落盘那份先接回来：进程级缓存活不过一次重启，接回来之后"重启后第一次进扩展页"也有东西可画。
+        DshLiveInventoryCache.attach(context.cacheDir)
         withContext(Dispatchers.IO) {
-            DshLiveInventoryCache.loadOnce { DshInventoryProbe.read(context) }
+            DshLiveInventoryCache.restore()
+            // **没有缓存也要探**：以前这里写的是"只在过期时探"，而没有缓存时 isStale() 恒为 false
+            //（见它的说明），于是这条预热从来没跑过 —— 装完第一次点开扩展页，等的是完整的一次真探
+            //（真机反馈："他一直都在那里加载"）。
+            if (DshLiveInventoryCache.get() == null || DshLiveInventoryCache.isStale()) {
+                DshLiveInventoryCache.loadOnce { DshInventoryProbe.read(context) }
+            }
         }
     }
     LaunchedEffect(openSpeechSettings) {

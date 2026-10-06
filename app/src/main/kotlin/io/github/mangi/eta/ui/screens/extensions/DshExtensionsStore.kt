@@ -37,7 +37,8 @@ import kotlinx.coroutines.withContext
  * **起一次 dsh 很贵**（[DshInventoryProbe] 要真跑一遍运行时，手机上几秒级），所以只有两种情况会探：
  *   · 进页面时**没有**活清单缓存（第一次，界面得等着：[liveLoading]）；
  *   · 缓存过期（超过 [DshLiveInventoryCache] 的 TTL）或被标脏，以及用户按了顶部刷新
- *     —— 这两种都**先渲染旧的**，再在后台更新一次，不打回 loading。
+ *     —— 这两种都**先渲染旧的**，再在后台更新一次，不打回 loading。缓存本身还**落盘**
+ *     （[DshLiveInventoryCache.attach]）：App 重启后第一次进页面也有东西可画，不必等一次真探。
  * 其余动作（最要紧的是：开关一行插件）**绝不起 dsh**：写完文件就地改本地状态（[pending]），
  * 活清单缓存只标脏。
  *
@@ -113,8 +114,9 @@ internal class DshExtensionsStore(
     private var loadingNow = false
 
     /**
-     * 活清单**这一次是从哪来的**：`runtime-file`（毫秒级）/ `home-file`（要 su）/ `probe`（要起 dsh，
-     * ~27 秒）。界面在"正在读取"那句后面把它写出来 —— 慢的时候能一眼看出在等什么。
+     * 活清单**这一次是从哪来的**：`shared-file`（runtime 目录里那份，毫秒级）/ `home-file‹…›`
+     *（要 su；尖括号里是"快的那条为什么没用上"）/ `probe‹…›`（要起 dsh，~27 秒）。界面在"正在读取"
+     * 那句后面把它写出来 —— 慢的时候能一眼看出在等什么。
      */
     val liveSource: String get() = DshInventoryProbe.lastSource
 
@@ -149,6 +151,8 @@ internal class DshExtensionsStore(
         private set
 
     init {
+        // 落盘缓存的落点：App 起来那次预热（`AgentAppRoot`）用的是同一个目录，两边合起来才是一份。
+        DshLiveInventoryCache.attach(appContext.cacheDir)
         // 偏好读失败不该拦着读清单：选不中就用官方默认值（[DshPresetUi] 里那一次读会兜）。
         load(explicit = false)
     }
@@ -176,7 +180,11 @@ internal class DshExtensionsStore(
     }
 
     private suspend fun read(explicit: Boolean) {
-        val ready = withContext(Dispatchers.IO) { DshRuntimeInstaller.isReady(appContext) }
+        val ready = withContext(Dispatchers.IO) {
+            // 落盘那份先接回内存：下面 [readLiveInventory] 一进来就看它 —— 有就先渲染，不再干等真探。
+            DshLiveInventoryCache.restore()
+            DshRuntimeInstaller.isReady(appContext)
+        }
         runtimeReady = ready
         if (!ready) {
             // 运行时不在时读出来只会是一屏"找不到这个包"：那不是这个页面要说的事。
@@ -260,12 +268,14 @@ internal class DshExtensionsStore(
             try {
                 // 探针会走 su + chroot（阻塞在 waitFor 上），必须在 IO 上下文里。
                 // 走 `loadOnce`：与 App 起来时那次预热**并成一次**（不然两边各起一个 dsh）。
+                // `force = explicit`：顶部那个刷新按钮**必须真探一次** —— 以前这里不看 explicit，
+                // 而 loadOnce 见缓存就直接还回来，那个按钮等于没接线（只是把旧数据又画了一遍）。
                 val probe = withContext(Dispatchers.IO) {
-                    DshLiveInventoryCache.loadOnce { DshInventoryProbe.read(appContext) }
+                    DshLiveInventoryCache.loadOnce(force = explicit) { DshInventoryProbe.read(appContext) }
                 }
                 when (probe) {
                     is DshLiveInventory.Ready -> {
-                        DshLiveInventoryCache.put(probe)
+                        // 缓存（与落盘）由 loadOnce 自己放：这里不再 put 一次。
                         live = probe
                         liveProblem = null
                     }
