@@ -103,6 +103,47 @@ class AgentUsagePillTest {
     }
 
     @Test
+    fun durationFollowsTheClientFormat() {
+        // 客户端 formatDuration：不到一分钟写 `12.3秒`，之后写 `2分42秒`。
+        assertTrue(formatDurationMs(context, 12_340).startsWith("12.3"))
+        assertTrue(formatDurationMs(context, 162_000).contains("2"))
+        assertTrue(formatDurationMs(context, 162_000).contains("42"))
+        // 一分钟整也要写成 1分0秒（客户端就是这么写的）。
+        assertTrue(formatDurationMs(context, 60_000).contains("1"))
+    }
+
+    @Test
+    fun tokensPerSecondMatchesTheClientRounding() {
+        // ≥10 取整、否则一位小数（客户端 formatTokensPerSecond）。
+        assertEquals("185", tokensPerSecond(TokenUsageUi(decodeMs = 1_000, decodeTokens = 185)))
+        assertEquals("9.5", tokensPerSecond(TokenUsageUi(decodeMs = 2_000, decodeTokens = 19)))
+        // 没有解码时长或没有输出：那一段不写。
+        assertNull(tokensPerSecond(TokenUsageUi(decodeTokens = 100)))
+        assertNull(tokensPerSecond(TokenUsageUi(decodeMs = 1_000)))
+    }
+
+    @Test
+    fun statsRowsFollowTheClientAndSkipZeroes() {
+        val rows = statsDetailRows(
+            context,
+            TokenUsageUi(
+                llmMs = 16_687,
+                toolMs = 0,
+                ttftMs = 15_388,
+                ttftSteps = 6,
+                decodeMs = 1_299,
+                decodeTokens = 75,
+            ),
+            Locale.US,
+        )
+
+        // 工具用时是 0 → 那一行不画；其余三行照客户端的顺序与措辞。
+        assertEquals(3, rows.size)
+        assertTrue(rows.none { it.first.contains("Tool") })
+        assertTrue(rows[2].second.contains("tok/s"))
+    }
+
+    @Test
     fun rowsForANativeSessionSkipTurnStatsAndCacheWrite() {
         // 原生那条会话：只有输入输出与缓存读取 —— 缓存写那一行不出现。
         val rows = agentUsageDetailRows(

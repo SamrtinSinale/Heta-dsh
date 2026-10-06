@@ -90,6 +90,7 @@ import io.github.mangi.eta.ui.model.PendingFileReferenceUi
 import io.github.mangi.eta.ui.model.PendingImageUi
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.ToolActivityMessageUi
+import io.github.mangi.eta.ui.model.TokenUsageUi
 import io.github.mangi.eta.ui.model.ToolSummaryMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.latestContextUsage
@@ -229,6 +230,7 @@ internal fun AgentChatBody(
             modelPickerState = modelPickerState,
             isCompacting = isCompacting,
             contextUsage = contextUsage,
+            sessionTotals = sessionTotals,
             isStreaming = isStreaming,
             reasoningEffort = reasoningEffort,
             availableReasoningEfforts = availableReasoningEfforts,
@@ -286,6 +288,7 @@ private fun AgentChatScaffold(
     modelPickerState: AgentModelPickerUiState,
     isCompacting: Boolean,
     contextUsage: AgentContextUsageUi,
+    sessionTotals: TokenUsageUi,
     isStreaming: Boolean,
     reasoningEffort: ReasoningEffort,
     availableReasoningEfforts: List<ReasoningEffort>,
@@ -342,6 +345,12 @@ private fun AgentChatScaffold(
             bottom = 0.dp,
         ),
         bottomBar = {
+            // 输入框上面那一行（客户端的 StatsPills 就在这个位置）：会话统计 + Token 用量。
+            // 会话累计由 `AgentChatBody` 算好当参数传进来（这个 composable 手里只有 visibleMessages）。
+            AgentSessionStatsPills(
+                totals = sessionTotals,
+                modifier = Modifier.padding(bottom = 2.dp),
+            )
             AgentChatBottomBar(
                 messageBackdrop = messageBackdrop.takeIf { frostEnabled },
                 input = input,
