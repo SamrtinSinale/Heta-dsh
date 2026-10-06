@@ -893,8 +893,8 @@ private fun DshPresetProvidedRow(row: DshLivePresetRow, presetId: String?) {
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     val preferred = dshLocalePreference(locale)
-    // 官方那套：有元数据用元数据的标题/说明，没有就退回**短包名**（官方也只给设置页用短名）。
-    val title = row.title?.resolve(preferred) ?: dshModuleShortName(row.moduleName)
+    // 同 DshLiveSwitchRow：有元数据用元数据，没有就退回**完整模块名**（不缩成短名）。
+    val title = row.title?.resolve(preferred) ?: row.moduleName
     val description = row.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
     // 行上只写"不正常"的那几件（同 DshLiveSwitchRow 的口径）：来自哪个预设（搜索时）/ 已停用 /
     // 视条件而定 / 运行状态；标题与短 id 相同时不再重复写 id（官方同一条）。
@@ -989,9 +989,13 @@ private fun DshLiveSwitchRow(
     val toggleable = switchable && blocked == null && row != null && !store.working
     val configState = configStateLabel(store.enabledFor(entry))
     val runtimeState = runtimeStateLabel(entry.fiberPhase)
-    // 官方那页显示的是标题 + 说明（`pluginPackages` 的本地化元数据），没有才退回短包名。
+    // 官方那页显示的是标题 + 说明（`pluginPackages` 的本地化元数据）。
+    //
+    // 但**没有元数据时退回完整模块名**，不缩成短名：短名（`tool-fs`、`typert-gateway` 这种）与
+    // 条目编号长得一样，真机反馈连着两次说"显示的是条目编号而不是完整名称"。官方那套缩短规则
+    // 留在 [dshModuleShortName] 里（带单测），将来要用随时能接回来。
     val preferred = dshLocalePreference(LocalConfiguration.current.locales[0])
-    val title = entry.title?.resolve(preferred) ?: dshModuleShortName(entry.moduleName)
+    val title = entry.title?.resolve(preferred) ?: entry.moduleName
     val description = entry.description?.resolve(preferred)?.takeIf { it.isNotBlank() }
     // 文件层说它是开着的、这一轮却读到关着 —— 那是**探针**为了腾出 stdio 自己关掉的
     //（见 DshInventoryProbe），真实对话里它是开着的。以前这层意思靠页面顶部一条小灰字解释，
