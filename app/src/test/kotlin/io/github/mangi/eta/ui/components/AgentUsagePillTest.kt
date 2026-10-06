@@ -81,6 +81,28 @@ class AgentUsagePillTest {
     }
 
     @Test
+    fun pillLabelCarriesTheCacheHitAndDropsItWhenNothingWasCached() {
+        val withCache = usagePillLabel(
+            context,
+            TokenUsageUi(inputTokens = 77, cachedTokens = 923, outputTokens = 11_400),
+            12_400,
+            Locale.US,
+        )
+        // 前半句是每轮药丸的措辞，后半句是会话统计那句 —— 两个都照客户端。
+        assertTrue("药丸文本：$withCache", withCache.contains("12.4K"))
+        assertTrue("药丸文本：$withCache", withCache.contains("92.3%"))
+
+        // 原生那条会话没报缓存读取：后半句不出现（不编一个 0% 出来）。
+        val withoutCache = usagePillLabel(
+            context,
+            TokenUsageUi(inputTokens = 900, outputTokens = 100),
+            1_000,
+            Locale.US,
+        )
+        assertTrue("药丸文本：$withoutCache", !withoutCache.contains("%"))
+    }
+
+    @Test
     fun rowsForANativeSessionSkipTurnStatsAndCacheWrite() {
         // 原生那条会话：只有输入输出与缓存读取 —— 缓存写那一行不出现。
         val rows = agentUsageDetailRows(

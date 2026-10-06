@@ -1097,6 +1097,7 @@
   <string name="context_no_model_limit">模型未提供上限</string>
   <string name="context_usage_after_response">完成首次回覆後顯示實測用量</string>
   <string name="context_usage_previous_response">%1$s\n上輪實測</string>
+  <string name="stats_cache_hit">快取命中 %1$s%%</string>
   <string name="usage_pill_consumed">用量 %1$s</string>
   <string name="usage_pill_count">%1$s tok</string>
   <string name="usage_stats_counts">%1$d 輪 %2$d 步</string>

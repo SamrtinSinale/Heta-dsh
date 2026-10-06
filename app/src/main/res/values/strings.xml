@@ -1221,6 +1221,7 @@
   <string name="data_backup_file_open_failed">Unable to open the selected file</string>
   <string name="context_compaction">Context compaction</string>
   <string name="context_compact_action">Compact context</string>
+  <string name="stats_cache_hit">Cache hit %1$s%%</string>
   <string name="usage_pill_consumed">Usage %1$s</string>
   <string name="usage_pill_count">%1$s tok</string>
   <string name="usage_stats_counts">%1$d turns %2$d steps</string>

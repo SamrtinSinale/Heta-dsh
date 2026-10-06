@@ -126,10 +126,7 @@ private fun AgentStatPill(
 private fun AgentUsagePill(usage: TokenUsageUi, total: Int, locale: Locale) {
     val context = LocalContext.current
     var showDetails by remember { mutableStateOf(false) }
-    val label = stringResource(
-        R.string.usage_pill_consumed,
-        stringResource(R.string.usage_pill_count, formatCompactTokenCount(total, locale)),
-    )
+    val label = usagePillLabel(context, usage, total, locale)
     Box {
         AgentStatPill(
             icon = Icons.Rounded.Storage,
@@ -247,6 +244,28 @@ private fun trimPercent(units: Long, places: Int): String {
     val fraction = units % (if (places == 1) 10L else if (places == 2) 100L else 1000L)
     if (fraction == 0L) return whole.toString()
     return whole.toString() + "." + fraction.toString().padStart(places, '0').trimEnd('0')
+}
+
+/**
+ * 药丸上那一行字：`用量 12.4K tok · 缓存命中 92%`。
+ *
+ * 前半句是客户端**每轮**药丸的措辞（`message.turnUsage.consumed` + `message.turnUsage.count`），
+ * 后半句借它**会话统计**药丸的那句（`stats.cacheHit`）—— 用户要的就是"回复下面能一眼看见 cache"，
+ * 藏进详情里等于没显示。没有缓存读取（原生那条会话报不出）时后半句不出现。
+ */
+internal fun usagePillLabel(
+    context: Context,
+    usage: TokenUsageUi,
+    total: Int,
+    locale: Locale,
+): String {
+    val head = context.getString(
+        R.string.usage_pill_consumed,
+        context.getString(R.string.usage_pill_count, formatCompactTokenCount(total, locale)),
+    )
+    val percent = cacheHitPercent(usage.cachedTokens, usage.inputTokens, usage.cacheWriteTokens)
+        ?: return head
+    return head + " · " + context.getString(R.string.stats_cache_hit, percent)
 }
 
 /** 精确值（带千分位）—— 详情里用这个，药丸上用缩写。 */
