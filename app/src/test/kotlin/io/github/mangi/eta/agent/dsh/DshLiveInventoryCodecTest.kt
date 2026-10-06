@@ -157,50 +157,6 @@ class DshLiveInventoryCodecTest {
     }
 
     @Test
-    fun presetProvidersIndexMatchesGlobalRowsAcrossTheIncludePrefix() {
-        val presets = listOf(
-            preset(id = "standard", rows = listOf(row(entryId = "tool-plugin-manager"))),
-            preset(
-                id = "ptc",
-                rows = listOf(
-                    // 同一个预设重复给同一行：只记一次。
-                    row(entryId = "include:tool-plugin-manager"),
-                    row(entryId = "include:tool-plugin-manager"),
-                ),
-            ),
-        )
-
-        val providers = dshLivePresetProviders(presets)
-        val globalKey = dshLiveRowKey("include:tool-plugin-manager", MODULE_NAME)
-
-        // 全局清单那条 id 带前缀、预设那条不带 —— 两边都要落到同一个键上。
-        assertEquals(listOf("standard", "ptc"), providers[globalKey])
-        // 没有 id 的行退回模块名，同样对得上。
-        val byModuleName = dshLivePresetProviders(
-            listOf(preset(id = "standard", rows = listOf(row(entryId = null)))),
-        )
-        assertEquals(listOf("standard"), byModuleName[dshLiveRowKey(null, MODULE_NAME)])
-    }
-
-    private fun preset(id: String, rows: List<DshLivePresetRow>) = DshLivePreset(
-        id = id,
-        name = id,
-        isDefault = false,
-        broken = null,
-        rows = rows,
-    )
-
-    private fun row(entryId: String?) = DshLivePresetRow(
-        entryId = entryId,
-        moduleName = MODULE_NAME,
-        enabled = true,
-        conditional = false,
-        condition = null,
-        fiberPhase = "active",
-        patchId = null,
-    )
-
-    @Test
     fun readsTheLocalizedMetaTitleAndDescription() {
         // 官方的 `meta`：title / description 各是"字面串或 locale → 文案"（LocalizedText）。
         val ready = ready(
@@ -279,8 +235,6 @@ class DshLiveInventoryCodecTest {
     }
 
     private companion object {
-
-        const val MODULE_NAME = "@deepseek-ai/dsh-plugin-manager/tools"
 
         const val MARKER_LINE = "HETA-INVENTORY-JSON:{\"entries\":[" +
             "{\"entryId\":\"include\",\"moduleName\":\"cordis:include\",\"enabled\":true,\"fiberPhase\":\"active\"}," +

@@ -33,11 +33,6 @@ internal object DshInventoryProbe {
     /** 桥在 Loader 里的条目 id（覆盖层里的 `- id:`）。 */
     private const val BRIDGE_ENTRY_ID = "heta-inventory-bridge"
 
-    private const val OVERLAY_NAME = "heta-inventory-overlay.patch.yml"
-
-    /** 覆盖层在 chroot **内**的路径（`exec chroot` 之后才成立）。 */
-    private const val OVERLAY_IN_ROOT = "/opt/dsh/$OVERLAY_NAME"
-
     private const val BRIDGE_RELATIVE = "opt/dsh/$BRIDGE_ASSET"
     /** join 插件与覆盖层同目录：覆盖层里那一行写的是相对名。 */
     private const val JOIN_RELATIVE = "opt/dsh/heta-preset-join.mjs"
