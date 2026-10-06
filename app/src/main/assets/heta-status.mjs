@@ -26,6 +26,7 @@
  */
 import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const name = 'heta-status'
 
@@ -44,6 +45,16 @@ const INVENTORY_FILE = join(DSH_HOME, 'heta-inventory.json')
  * stage=publish + 堆栈，写成功了再把它删掉。
  */
 const ERROR_FILE = join(DSH_HOME, 'heta-status-error.txt')
+
+/**
+ * **App 直接读**的那一份。
+ *
+ * 为什么另写一份：`$DSH_HOME` 是 `/root/.dsh`，root 私有目录 —— App 只能 `su -c cat`，而
+ * `su` 本身要起一个进程（真机上就是"还要等一下"的来源之一）。这个插件自己的文件就在 runtime
+ * 目录里（`/opt/dsh/heta-status.mjs`），那个目录是 **App 自己解包出来的**（属主是 App），
+ * 所以往旁边写一份 0644 的文件，App 用普通文件读就行 —— 毫秒级，连 su 都不用。
+ */
+const SHARED_FILE = join(dirname(fileURLToPath(import.meta.url)), 'heta-inventory.json')
 
 /**
  * 与桥同一行协议前缀（`DshLiveInventoryCodec` 找的就是它）。
@@ -181,7 +192,8 @@ export function apply(ctx, config) {
       const snapshot = await readInventory(ctx)
       const signature = signatureOf(snapshot)
       if (signature === lastSignature) return
-      if (writeJson(INVENTORY_FILE, { at: Date.now(), ...snapshot })) {
+      const body = { at: Date.now(), ...snapshot }
+      if (writeJson(INVENTORY_FILE, body) && writeJson(SHARED_FILE, body)) {
         lastSignature = signature
         try {
           rmSync(ERROR_FILE, { force: true })

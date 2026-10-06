@@ -76,6 +76,15 @@ internal object DshInventoryProbe {
      */
     private const val STATUS_RELATIVE = "root/.dsh/heta-inventory.json"
 
+    /**
+     * 会话插件写在 **runtime 目录**里的那一份（`/opt/dsh/heta-inventory.json`）。
+     *
+     * 这一份 App 能**直接读**：runtime 目录是 App 自己解包出来的（属主是 App），插件在里面写的是
+     * 0644 的文件 —— 不用 `su`、不用起进程，毫秒级。`$DSH_HOME` 那份（root 私有）留给端到端与
+     * 排查用，App 读它要走 `su`（慢一截），所以只当第二选择。
+     */
+    private const val SHARED_RELATIVE = "opt/dsh/heta-inventory.json"
+
     /** 读状态文件给多久：它只是 `cat` 一个小文件，超时只可能是 su 卡在授权。 */
     private const val STATUS_TIMEOUT_MS = 15_000L
 
@@ -100,6 +109,14 @@ internal object DshInventoryProbe {
      * 为什么 stdout 重定向到文件而不是管道：管道只有 64KB，这份 JSON 会超过它。
      */
     private fun readStatusFile(root: File): DshLiveInventory.Ready? {
+        // ① runtime 目录里那一份：普通文件读，毫秒级。
+        val shared = File(root, SHARED_RELATIVE)
+        runCatching { shared.readText() }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() && statusIsFresh(it) }
+            ?.let { text -> DshLiveInventoryCodec.parse(text) as? DshLiveInventory.Ready }
+            ?.let { return it }
+        // ② `$DSH_HOME` 那一份：root 私有，得走 su。
         val file = File(root, STATUS_RELATIVE)
         val out = runCatching { File.createTempFile("dsh-status-", ".json") }.getOrNull() ?: return null
         return try {

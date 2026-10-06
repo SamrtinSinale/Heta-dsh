@@ -455,6 +455,15 @@ else
   echo "⑫ 状态出口插件：$INVENTORY_FILE 不存在 ✗"
 fi
 
+# 还要有 runtime 目录里那一份：App 直接读它（不用 su、不用起进程）—— 「秒开」靠的就是它。
+SHARED_INVENTORY="$ROOT/opt/dsh/heta-inventory.json"
+if [ -f "$SHARED_INVENTORY" ] && head -c 32 "$SHARED_INVENTORY" | grep -q "HETA-INVENTORY-JSON:"; then
+  echo "⑫b runtime 目录那一份：$SHARED_INVENTORY（$(wc -c < "$SHARED_INVENTORY") 字节）✓"
+else
+  echo "⑫b runtime 目录那一份不存在或没有协议前缀 ✗（$SHARED_INVENTORY）"
+  inv_ok=0
+fi
+
 echo
 if [ "$acp_status" -eq 0 ] && [ "$round2_status" -eq 0 ] && [ "$file_ok" -eq 1 ] \
    && [ "$cred_ok" -eq 1 ] && [ "$history_ok" -eq 1 ] && [ "$round3_status" -eq 0 ] \
