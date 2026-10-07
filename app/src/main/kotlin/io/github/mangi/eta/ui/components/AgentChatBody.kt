@@ -723,6 +723,16 @@ internal fun AgentConversationMessages(
                     }
                 }
             }
+            // 发消息之后、对面还没出字：显示「深度求索中，用时 X ···」（客户端 chat.deepDivingFor）。
+            // 为什么放在**列表这一层**：那段时间还没有助手消息（第一条内容到了才建），挂在消息块里
+            // 的那一份永远不会出现 —— 上一版就是这么没生效的。
+            if (isStreaming && visibleMessages.none { it is AgentMessageUi && it.isStreaming }) {
+                item(key = "deep_diving") {
+                    DshDeepDivingLabel(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 7.dp),
+                    )
+                }
+            }
             item(key = ChatBottomSentinelKey) {
                 Spacer(
                     modifier = Modifier
