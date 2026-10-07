@@ -182,10 +182,8 @@ internal class DshExtensionsStore(
                 }
 
                 is DshPluginInstaller.Outcome.Failed -> {
-                    message = appContext.getString(
-                        R.string.extensions_plugin_install_failed,
-                        outcome.reason,
-                    )
+                    // 一行写完：占位符检查器按"最近的 ( 里的顶层逗号"数实参，尾逗号会被算成一个。
+                    message = appContext.getString(R.string.extensions_plugin_install_failed, outcome.reason)
                     messageIsError = true
                 }
             }
