@@ -981,7 +981,9 @@ private fun AgentChatBottomBar(
                 .fillMaxWidth()
                 .background(MiuixTheme.colorScheme.surface)
                 .navigationBarsPadding()
-                .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+                // 底部再收一点：这一排与屏幕底部之间原来留了 12dp，用户说还是宽（输入框与那一排
+                // 之间的 2dp 他认为够了，要收的是**底栏这一侧**）。
+                .padding(start = 14.dp, end = 14.dp, bottom = 4.dp),
         ) {
             AgentChatInputBar(
                 input = input,
