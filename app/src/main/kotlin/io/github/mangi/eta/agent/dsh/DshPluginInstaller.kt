@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.dsh
 import android.content.Context
 import android.util.Log
 import io.github.mangi.eta.agent.terminal.RootlessLinuxInstaller
+import io.github.mangi.eta.core.SafeTreeDelete
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -179,7 +180,11 @@ internal object DshPluginInstaller {
     fun uninstall(context: Context, id: String): Outcome = runCatching {
         val runtimeRoot = DshRuntimeInstaller.runtimeDirectory(context)
         val directory = File(File(runtimeRoot, MODULES_RELATIVE), id)
-        if (directory.exists() && !directory.deleteRecursively()) error("删不掉目录：${directory.absolutePath}")
+        // 递归删必须走 SafeTreeDelete：插件目录里可能有符号链接（npm 包很常见），裸
+        // `deleteRecursively` 会跟着链接删到别处 —— 这是这一摊的不变式之一。
+        if (directory.exists() && !SafeTreeDelete.deleteOrRetire(directory)) {
+            error("删不掉目录：${directory.absolutePath}")
+        }
         DshProfileStore.forRuntime(runtimeRoot).setPluginEnabled(id, id, enabled = false)
         Outcome.Installed(id)
     }.getOrElse { error -> Outcome.Failed(error.message ?: error::class.java.simpleName) }
@@ -203,7 +208,7 @@ internal object DshPluginInstaller {
         val root = File(context.cacheDir, "dsh-plugin-install")
         root.mkdirs()
         val staging = File(root, name.ifBlank { "plugin" })
-        if (staging.exists()) staging.deleteRecursively()
+        if (staging.exists()) SafeTreeDelete.deleteOrRetire(staging)
         staging.mkdirs()
         return staging
     }
@@ -230,7 +235,9 @@ internal object DshPluginInstaller {
 
     /** 复制整棵树（覆盖目标）。 */
     private fun copyTree(source: File, target: File) {
-        if (target.exists()) target.deleteRecursively()
+        if (target.exists() && !SafeTreeDelete.deleteOrRetire(target)) {
+            error("清不掉旧目录：${target.absolutePath}")
+        }
         target.parentFile?.mkdirs()
         if (!source.copyRecursively(target, overwrite = true)) error("复制失败：${source.absolutePath}")
     }
