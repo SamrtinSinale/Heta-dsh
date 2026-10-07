@@ -345,12 +345,6 @@ private fun AgentChatScaffold(
             bottom = 0.dp,
         ),
         bottomBar = {
-            // 输入框上面那一行（客户端的 StatsPills 就在这个位置）：会话统计 + Token 用量。
-            // 会话累计由 `AgentChatBody` 算好当参数传进来（这个 composable 手里只有 visibleMessages）。
-            AgentSessionStatsPills(
-                totals = sessionTotals,
-                modifier = Modifier.padding(bottom = 2.dp),
-            )
             AgentChatBottomBar(
                 messageBackdrop = messageBackdrop.takeIf { frostEnabled },
                 input = input,
@@ -416,6 +410,12 @@ private fun AgentChatScaffold(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if (frostEnabled) Modifier.layerBackdrop(messageBackdrop) else Modifier),
+            )
+            // 输入框**下面**那一行：会话统计 + Token 用量（居中）。会话累计由 `AgentChatBody`
+            // 算好当参数传进来（这个 composable 手里只有 visibleMessages）。
+            AgentSessionStatsPills(
+                totals = sessionTotals,
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }

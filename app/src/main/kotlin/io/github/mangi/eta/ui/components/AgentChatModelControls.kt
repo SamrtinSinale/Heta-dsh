@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DataUsage
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.ui.model.formatCompactTokenCount
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentModelOptionUi
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
@@ -69,6 +71,7 @@ import top.yukonga.miuix.kmp.basic.TooltipAnchorPosition
 import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.basic.TooltipDefaults
 import top.yukonga.miuix.kmp.basic.rememberTooltipState
+import top.yukonga.miuix.kmp.window.WindowListPopup
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -263,6 +266,9 @@ private fun ModelPickerRow(
     }
 }
 
+/** 上下文弹层的宽度：`DetailWidth` 是 AgentUsagePill.kt 里的 private，跨文件用不了。 */
+private val ContextPanelWidth = 260.dp
+
 @Composable
 internal fun AgentContextUsageButton(
     usage: AgentContextUsageUi,
@@ -270,8 +276,12 @@ internal fun AgentContextUsageButton(
     canCompact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
     val scope = rememberCoroutineScope()
-    val tooltipState = rememberTooltipState(isPersistent = true)
+    var open by remember { mutableStateOf(false) }
+    // 上下文**构成**（系统提示词 / 工具定义 / 对话消息）只有会话插件那份文件里有：点开时读一次。
+    var breakdown by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     val progress = usage.progress
     val progressColor = when {
         progress == null -> MiuixTheme.colorScheme.onSurfaceVariantActions
@@ -279,76 +289,33 @@ internal fun AgentContextUsageButton(
         progress >= 0.80f -> StatusWarning
         else -> MiuixTheme.colorScheme.primary
     }
-    val locale = LocalConfiguration.current.locales[0]
-    val summary = formatContextUsage(
-        usage = usage,
-        noUsageText = stringResource(R.string.context_no_previous_usage),
-        noLimitText = stringResource(R.string.context_no_model_limit),
-        locale = locale,
-    )
-    // 上下文**构成**（系统提示词 / 工具定义 / 对话消息）只有会话插件那份文件里有：点开时读一次
-    // （IO 上一次小文件读），读不到就只显示占用 —— 那一份安装没装投影插件时就是这样。
-    val appContext = LocalContext.current
-    var breakdown by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    val baseDetail = when {
-        usage.estimated -> stringResource(R.string.context_usage_estimated, summary)
-        usage.contextTokens == null -> stringResource(R.string.context_usage_after_response)
-        else -> stringResource(R.string.context_usage_previous_response, summary)
+    val tokens = usage.contextTokens
+    val window = usage.contextWindow
+    val percent = if (tokens != null && window != null && window > 0) {
+        Math.round(tokens.toDouble() / window.toDouble() * 100.0).toString() + "%"
+    } else {
+        null
     }
-    val detail = (listOf(baseDetail) + breakdown.map { (label, value) -> "$label $value" })
-        .joinToString("\n")
+    // `~` 是**估算**的意思：占用值来自最近一次请求的用量锚点加表面增量，不是逐 token 数出来的
+    //（官方说明如此）；分项那三个数更是启发式估算，所以它们加起来不等于占用值。
+    val summary = if (tokens != null) {
+        val windowText = if (window != null && window > 0) formatCompactTokenCount(window, locale) else null
+        val usedText = formatCompactTokenCount(tokens, locale)
+        if (windowText == null) stringResource(R.string.context_breakdown_approx, usedText)
+        else stringResource(R.string.context_usage_summary, usedText, windowText)
+    } else {
+        stringResource(R.string.context_no_previous_usage)
+    }
     val usageDescription = stringResource(
         R.string.context_usage_description,
         summary.replace('\n', ' '),
     )
-    val tooltipColors = TooltipDefaults.richTooltipColors()
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-        tooltip = {
-            RichTooltip(
-                title = {
-                    Text(
-                        text = stringResource(R.string.ui_contextual_usage_d12810),
-                        color = tooltipColors.titleContentColor,
-                        style = MiuixTheme.textStyles.subtitle,
-                    )
-                },
-                action = if (canCompact) {
-                    {
-                        TextButton(
-                            text = stringResource(R.string.context_compact_action),
-                            onClick = {
-                                onCompact()
-                                tooltipState.dismiss()
-                            },
-                            minWidth = 0.dp,
-                            minHeight = 34.dp,
-                            cornerRadius = 17.dp,
-                            colors = ButtonDefaults.textButtonColorsPrimary(),
-                            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                        )
-                    }
-                } else {
-                    null
-                },
-                colors = tooltipColors,
-            ) {
-                Text(
-                    text = detail,
-                    color = tooltipColors.contentColor,
-                    style = MiuixTheme.textStyles.body2,
-                )
-            }
-        },
-        state = tooltipState,
-        focusable = true,
-        modifier = modifier,
-    ) {
+    Box(modifier = modifier) {
         IconButton(
             onClick = {
                 scope.launch {
-                    breakdown = withContext(Dispatchers.IO) { contextBreakdownRows(appContext) }
-                    tooltipState.show()
+                    breakdown = withContext(Dispatchers.IO) { contextBreakdownRows(context) }
+                    open = true
                 }
             },
             minWidth = ChatInputActionSize,
@@ -367,6 +334,82 @@ internal fun AgentContextUsageButton(
                     contentDescription = usageDescription
                 },
             )
+        }
+        WindowListPopup(
+            show = open,
+            alignment = PopupPositionProvider.Align.TopEnd,
+            onDismissRequest = { open = false },
+        ) {
+            ListPopupColumn {
+                Row(
+                    modifier = Modifier
+                        .width(ContextPanelWidth)
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.DataUsage,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (percent == null) {
+                            stringResource(R.string.context_usage_used_none)
+                        } else {
+                            stringResource(R.string.context_usage_used, percent)
+                        },
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.width(ContextPanelWidth))
+                Text(
+                    text = summary,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .width(ContextPanelWidth)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                breakdown.forEach { (label, value) ->
+                    Row(
+                        modifier = Modifier
+                            .width(ContextPanelWidth)
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = value,
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                if (canCompact) {
+                    TextButton(
+                        text = stringResource(R.string.context_compact_action),
+                        onClick = {
+                            open = false
+                            onCompact()
+                        },
+                        minWidth = 0.dp,
+                        minHeight = 34.dp,
+                        cornerRadius = 17.dp,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
         }
     }
 }

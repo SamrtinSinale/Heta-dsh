@@ -1235,6 +1235,9 @@
   <string name="context_breakdown_messages">Conversation messages</string>
   <string name="context_breakdown_approx">~%1$s</string>
   <string name="usage_stats_steps_only">%1$d steps</string>
+  <string name="context_usage_used">Context used %1$s</string>
+  <string name="context_usage_used_none">Context used</string>
+  <string name="context_usage_summary">~%1$s / %2$s</string>
   <string name="usage_pill_consumed">Usage %1$s</string>
   <string name="usage_pill_count">%1$s tok</string>
   <string name="usage_stats_counts">%1$d turns %2$d steps</string>

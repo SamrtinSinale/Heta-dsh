@@ -604,16 +604,6 @@ private fun AgentMessageBlock(
             }
         }
 
-        // 用量与轮次/步数：客户端把它们画成消息动作行里的两个「药丸」（TurnUsagePanel / TimePill），
-        // 这里同样是一行药丸 —— 内容下面、动作行上面。只在**落定之后**画：流式期间每一步的数字
-        // 都在变，跟着跳只会让人以为出错（同下面那个复制按钮的判据）。
-        message.usage?.takeIf { !message.isStreaming && revealComplete }?.let { usage ->
-            AgentUsageActions(
-                usage = usage,
-                modifier = Modifier.padding(top = 2.dp).offset(x = -8.dp),
-            )
-        }
-
         if (
             showCopyAction &&
             !message.isStreaming &&
@@ -692,6 +682,12 @@ private fun AgentMessageBlock(
                                 tint = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f),
                             )
                         }
+                    }
+                    // 用量与时间：**复制 / 删除右边**那两个图标（用户要的位置）。
+                    // 点开分别是「本轮用量」与这一步的模型用时 / 工具调用用时 / TTFT / TPS。
+                    message.usage?.let { usage ->
+                        AgentUsageIconButton(usage = usage)
+                        AgentTimeIconButton(usage = usage)
                     }
                     if (message.characterEditable && message.candidateCount > 1) {
                         Spacer(Modifier.weight(1f))

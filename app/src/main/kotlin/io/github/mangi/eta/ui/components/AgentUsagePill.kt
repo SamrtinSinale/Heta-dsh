@@ -40,6 +40,7 @@ import java.text.NumberFormat
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.Text
@@ -65,25 +66,81 @@ import top.yukonga.miuix.kmp.window.WindowListPopup
  *
  * 没报的那几项一个都不画：拿 0 顶上等于编数（原生那条会话就报不出缓存写与轮次 / 步数）。
  */
+/**
+ * 动作行里那种小图标按钮（与复制 / 删除同一套：30dp 命中区、15dp 图标、同样的颜色）。
+ *
+ * 为什么是图标而不是药丸：用户要的是"在复制删除按钮右边加上用量图标和时间" —— 动作行本来就
+ * 是一排图标，塞两个带字的药丸会把那一行撑长；图标点开才是详情。
+ */
 @Composable
-internal fun AgentUsageActions(
-    usage: TokenUsageUi,
-    modifier: Modifier = Modifier,
+private fun AgentActionIcon(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
 ) {
+    IconButton(onClick = onClick, minWidth = 30.dp, minHeight = 30.dp) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(15.dp),
+            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f),
+        )
+    }
+}
+
+/** 用量图标：点开是「本轮用量」详情（缓存命中 / 未缓存输入 / 缓存读取 / 缓存写入 / 输出）。 */
+@Composable
+internal fun AgentUsageIconButton(usage: TokenUsageUi, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
-    val total = billedTokenTotal(usage)
-    val steps = usage.steps
-    if (total == null && steps == null) return
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        if (steps != null) {
-            AgentTimePill(usage = usage, modifier = Modifier)
+    var showDetails by remember { mutableStateOf(false) }
+    val rows = remember(usage, locale) { agentUsageDetailRows(context, usage, locale) }
+    if (rows.isEmpty()) return
+    Box(modifier = modifier) {
+        AgentActionIcon(
+            icon = Icons.Rounded.Storage,
+            label = stringResource(R.string.usage_detail_title),
+            onClick = { showDetails = true },
+        )
+        WindowListPopup(
+            show = showDetails,
+            alignment = PopupPositionProvider.Align.TopEnd,
+            onDismissRequest = { showDetails = false },
+        ) {
+            AgentUsageDetails(
+                context = context,
+                usage = usage,
+                total = billedTokenTotal(usage) ?: 0,
+                locale = locale,
+            )
         }
-        if (total != null) {
-            AgentUsagePill(usage = usage, total = total, locale = locale)
+    }
+}
+
+/** 时间图标：点开是这一步 / 这一轮的 模型用时 / 工具调用用时 / TTFT / TPS。 */
+@Composable
+internal fun AgentTimeIconButton(usage: TokenUsageUi, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    var showDetails by remember { mutableStateOf(false) }
+    val rows = remember(usage, locale) { statsDetailRows(context, usage, locale) }
+    if (rows.isEmpty()) return
+    Box(modifier = modifier) {
+        AgentActionIcon(
+            icon = Icons.Rounded.Speed,
+            label = stringResource(R.string.stats_dialog_title),
+            onClick = { showDetails = true },
+        )
+        WindowListPopup(
+            show = showDetails,
+            alignment = PopupPositionProvider.Align.TopEnd,
+            onDismissRequest = { showDetails = false },
+        ) {
+            AgentStatsDetails(
+                context = context,
+                rows = rows,
+                title = stringResource(R.string.stats_dialog_title),
+            )
         }
     }
 }
