@@ -1441,6 +1441,8 @@
   <string name="extensions_uninstall">Uninstall</string>
   <string name="extensions_uninstall_empty">No plugins installed from here yet.</string>
   <string name="extensions_plugin_uninstalled">Uninstalled %1$s; it takes effect in the next conversation.</string>
+  <string name="chat_deep_diving">Deep diving</string>
+  <string name="chat_deep_diving_for">Deep diving, %1$s elapsed ···</string>
   <string name="extensions_add_plugin">Add plugin</string>
   <string name="extensions_add_plugin_hint">Enter a package name, GitHub repository URL, or local directory path for the plugin.</string>
   <string name="extensions_add_plugin_example">e.g. dsh-plugin-whale-pet</string>

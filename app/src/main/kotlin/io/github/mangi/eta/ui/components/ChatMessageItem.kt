@@ -59,6 +59,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -514,6 +515,39 @@ private fun ContextCompactionMarker(
     }
 }
 
+/**
+ * 「深度求索中，用时 X ···」——发消息之后、对面还没出字时显示的那一句。
+ *
+ * 文案逐字取自客户端（`chat.deepDiving` / `chat.deepDivingFor`），时长格式也用客户端那套
+ * （[formatDurationMs]：不到一分钟 `12.3秒`，之后 `2分42秒`）。
+ *
+ * 计时从**这句话第一次出现**开始算（组合进来那一刻），不是从按下发送算 —— Heta 这边界面上拿不到
+ * 运行的起始时刻；差别就是网络往返那几百毫秒，不值得为它再往事件流里加一个字段。
+ */
+@Composable
+internal fun DshDeepDivingLabel(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val startedAt = remember { System.currentTimeMillis() }
+    var elapsedMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            elapsedMs = System.currentTimeMillis() - startedAt
+            kotlinx.coroutines.delay(1_000)
+        }
+    }
+    val text = if (elapsedMs < 1_000L) {
+        stringResource(R.string.chat_deep_diving)
+    } else {
+        stringResource(R.string.chat_deep_diving_for, formatDurationMs(context, elapsedMs))
+    }
+    Text(
+        text = text,
+        style = MiuixTheme.textStyles.body2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = modifier,
+    )
+}
+
 // ── Agent 结果 ───────────────────────────────────────────────────────
 
 @Composable
@@ -569,9 +603,9 @@ private fun AgentMessageBlock(
     ) {
         when {
             message.content.isBlank() && message.isStreaming -> {
-                AITypingIndicator(
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                // 还没出字的那一段：对面显示「深度求索中，用时 X ···」（文案照客户端
+                // `chat.deepDiving` / `chat.deepDivingFor`），每秒走一次字。
+                DshDeepDivingLabel(modifier = Modifier.padding(top = 4.dp))
             }
             streamingState != null && !revealComplete -> {
                 StreamingMarkdown(
