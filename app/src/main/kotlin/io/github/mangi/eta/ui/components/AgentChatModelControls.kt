@@ -425,16 +425,12 @@ internal fun AgentContextUsageButton(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 // 分项行：8dp 色块 + 标签（次要色）+ `~值`（主要色）—— 与上面那一段同色。
-                listOfNotNull(
-                    values?.systemTokens?.let {
-                        stringResource(R.string.context_breakdown_system) to (it to SystemTint)
-                    },
-                    values?.toolsTokens?.let {
-                        stringResource(R.string.context_breakdown_tools) to (it to ToolsTint)
-                    },
-                    values?.messageTokens?.let {
-                        stringResource(R.string.context_breakdown_messages) to (it to MessagesTint)
-                    },
+                // **永远三行**：还没开口时也要有系统提示词 / 工具定义 / 对话消息（那时是 0）——
+                // 用户："没有对话也要带上"。
+                listOf(
+                    stringResource(R.string.context_breakdown_system) to ((values?.systemTokens ?: 0) to SystemTint),
+                    stringResource(R.string.context_breakdown_tools) to ((values?.toolsTokens ?: 0) to ToolsTint),
+                    stringResource(R.string.context_breakdown_messages) to ((values?.messageTokens ?: 0) to MessagesTint),
                 ).forEach { (label, pair) ->
                     val (tokens, tint) = pair
                     Row(

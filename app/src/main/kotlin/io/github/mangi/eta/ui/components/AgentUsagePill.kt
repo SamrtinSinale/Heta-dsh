@@ -233,6 +233,8 @@ internal fun AgentTimePill(
             append(" · ")
             append(stringResource(R.string.stats_tokens_per_second, speed))
         }
+        // 还没有任何数：标签就是"会话统计"本身（图标旁边得有字，用户要求的）。
+        if (isEmpty()) append(stringResource(R.string.stats_dialog_title))
     }
     val rows = remember(usage, locale) { statsDetailRows(context, usage, locale) }
     Box(modifier = modifier) {
@@ -500,13 +502,14 @@ internal fun usagePillLabel(
     total: Int,
     locale: Locale,
 ): String {
+    val percent = cacheHitPercent(usage.cachedTokens, usage.inputTokens, usage.cacheWriteTokens)
+    // 还没有任何数（还没开口）：标签就是"用量"本身 —— 用户明确不要"用量 0 tok"。
+    if (total <= 0 && percent == null) return context.getString(R.string.usage_pill_title)
     val head = context.getString(
         R.string.usage_pill_consumed,
         context.getString(R.string.usage_pill_count, formatCompactTokenCount(total, locale)),
     )
-    val percent = cacheHitPercent(usage.cachedTokens, usage.inputTokens, usage.cacheWriteTokens)
-        ?: return head
-    return head + " · " + context.getString(R.string.stats_cache_hit, percent)
+    return if (percent == null) head else head + " · " + context.getString(R.string.stats_cache_hit, percent)
 }
 
 /**

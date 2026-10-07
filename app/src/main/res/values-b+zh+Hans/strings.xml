@@ -1130,6 +1130,7 @@
   <string name="clock_md">%1$d月%2$d日</string>
   <string name="clock_ymd">%1$d年%2$d月%3$d日</string>
   <string name="clock_with_time">%1$s %2$s</string>
+  <string name="usage_pill_title">用量</string>
   <string name="usage_pill_consumed">用量 %1$s</string>
   <string name="usage_pill_count">%1$s tok</string>
   <string name="usage_stats_counts">%1$d 轮 %2$d 步</string>
