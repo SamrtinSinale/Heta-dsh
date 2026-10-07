@@ -1022,7 +1022,7 @@ private fun AgentChatBottomBar(
             // 那个槽按 Box 摆到最上面去（上一版就是这么错的）。
             AgentSessionStatsPills(
                 totals = sessionTotals,
-                modifier = Modifier.padding(top = 6.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }

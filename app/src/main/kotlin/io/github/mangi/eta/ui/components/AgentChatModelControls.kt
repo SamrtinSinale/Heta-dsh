@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.dsh.DshContextUsage
 import io.github.mangi.eta.ui.model.formatCompactTokenCount
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentModelOptionUi
@@ -272,6 +273,12 @@ private fun ModelPickerRow(
 /** 上下文弹层的宽度：`DetailWidth` 是 AgentUsagePill.kt 里的 private，跨文件用不了。 */
 private val ContextPanelWidth = 260.dp
 
+// 上下文分段与色块的颜色：照客户端 ContextMeter 的 CSS 变量 ——
+// 系统提示词是中性蓝灰、工具定义是固定的 `#a78bfa`（紫）、对话消息是蓝。
+private val SystemTint = Color(0xFF9AA7B8)
+private val ToolsTint = Color(0xFFA78BFA)
+private val MessagesTint = Color(0xFF3B82F6)
+
 @Composable
 internal fun AgentContextUsageButton(
     usage: AgentContextUsageUi,
@@ -284,7 +291,8 @@ internal fun AgentContextUsageButton(
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
     // 上下文**构成**（系统提示词 / 工具定义 / 对话消息）只有会话插件那份文件里有：点开时读一次。
-    var breakdown by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    // 存**原始数**：进度条要按它们的比例分段，行里还要各自的色块（照客户端 ContextMeter）。
+    var breakdown by remember { mutableStateOf<DshContextUsage?>(null) }
     val progress = usage.progress
     val progressColor = when {
         progress == null -> MiuixTheme.colorScheme.onSurfaceVariantActions
@@ -317,7 +325,7 @@ internal fun AgentContextUsageButton(
         IconButton(
             onClick = {
                 scope.launch {
-                    breakdown = withContext(Dispatchers.IO) { contextBreakdownRows(context) }
+                    breakdown = withContext(Dispatchers.IO) { contextBreakdownOf(context) }
                     open = true
                 }
             },
@@ -368,9 +376,18 @@ internal fun AgentContextUsageButton(
                     )
                 }
                 HorizontalDivider(modifier = Modifier.width(ContextPanelWidth))
-                // 进度条：客户端那个面板就是"一条进度条 + 占用值 + 分项"。进度取
-                // `contextTokens / contextWindow`（没有窗口就画成空条）。
-                Box(
+                // 进度条：**分段**，照客户端 ContextMeter —— 三个桶各一段，宽度按比例分，
+                // 每段用各自颜色（系统提示词 = 中性蓝灰、工具定义 = 紫、对话消息 = 蓝）。
+                // 没有分项数据时退化成一条单色进度条（客户端也是这么退化的）。
+                val values = breakdown
+                val parts = listOfNotNull(
+                    values?.systemTokens?.let { it to SystemTint },
+                    values?.toolsTokens?.let { it to ToolsTint },
+                    values?.messageTokens?.let { it to MessagesTint },
+                ).filter { it.first > 0 }
+                val partsTotal = parts.sumOf { it.first }
+                val filled = (usage.progress ?: 0f).coerceIn(0f, 1f)
+                Row(
                     modifier = Modifier
                         .width(ContextPanelWidth)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -378,13 +395,26 @@ internal fun AgentContextUsageButton(
                         .clip(RoundedCornerShape(3.dp))
                         .background(MiuixTheme.colorScheme.secondaryContainer),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth((usage.progress ?: 0f).coerceIn(0f, 1f))
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(progressColor),
-                    )
+                    if (partsTotal <= 0) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(filled)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(progressColor),
+                        )
+                    } else {
+                        parts.forEach { (tokens, tint) ->
+                            // 每段至少给一点宽度，否则小分项会整段看不见（客户端也这么兜）。
+                            val share = tokens.toFloat() / partsTotal.toFloat()
+                            Box(
+                                modifier = Modifier
+                                    .weight((filled * share).coerceAtLeast(0.02f))
+                                    .fillMaxHeight()
+                                    .background(tint),
+                            )
+                        }
+                    }
                 }
                 Text(
                     text = summary,
@@ -394,13 +424,32 @@ internal fun AgentContextUsageButton(
                         .width(ContextPanelWidth)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                breakdown.forEach { (label, value) ->
+                // 分项行：8dp 色块 + 标签（次要色）+ `~值`（主要色）—— 与上面那一段同色。
+                listOfNotNull(
+                    values?.systemTokens?.let {
+                        stringResource(R.string.context_breakdown_system) to (it to SystemTint)
+                    },
+                    values?.toolsTokens?.let {
+                        stringResource(R.string.context_breakdown_tools) to (it to ToolsTint)
+                    },
+                    values?.messageTokens?.let {
+                        stringResource(R.string.context_breakdown_messages) to (it to MessagesTint)
+                    },
+                ).forEach { (label, pair) ->
+                    val (tokens, tint) = pair
                     Row(
                         modifier = Modifier
                             .width(ContextPanelWidth)
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                            .padding(horizontal = 16.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(tint),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = label,
                             style = MiuixTheme.textStyles.footnote2,
@@ -408,7 +457,10 @@ internal fun AgentContextUsageButton(
                         )
                         Spacer(modifier = Modifier.weight(1f))
                         Text(
-                            text = value,
+                            text = stringResource(
+                                R.string.context_breakdown_approx,
+                                formatCompactTokenCount(tokens, locale),
+                            ),
                             style = MiuixTheme.textStyles.footnote2,
                             color = MiuixTheme.colorScheme.onSurface,
                             maxLines = 1,

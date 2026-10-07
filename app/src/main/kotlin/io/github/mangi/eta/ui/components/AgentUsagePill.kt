@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshRuntimeInstaller
+import io.github.mangi.eta.agent.dsh.DshContextUsage
 import io.github.mangi.eta.agent.dsh.DshUsageReader
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
@@ -346,20 +347,11 @@ internal fun AgentSessionStatsPills(
  * 那三个数是官方说明里写明的**启发式估算**（估算器系统性低估 CJK 与 JSON schema），所以值前面
  * 带 `~`，而且它们加起来不等于占用值：这是"构成"的近似，不是总量。
  */
-internal fun contextBreakdownRows(context: Context): List<Pair<String, String>> {
+internal fun contextBreakdownOf(context: Context): DshContextUsage? {
     val root = runCatching { DshRuntimeInstaller.runtimeDirectory(context).absolutePath }
         .getOrNull()
-        ?.takeIf { it.isNotBlank() } ?: return emptyList()
-    val value = DshUsageReader.latestSession(root)?.context ?: return emptyList()
-    val locale = context.resources.configuration.locales[0]
-    fun approx(tokens: Int?): String? = tokens?.let {
-        context.getString(R.string.context_breakdown_approx, formatCompactTokenCount(it, locale))
-    }
-    return listOfNotNull(
-        approx(value.systemTokens)?.let { context.getString(R.string.context_breakdown_system) to it },
-        approx(value.toolsTokens)?.let { context.getString(R.string.context_breakdown_tools) to it },
-        approx(value.messageTokens)?.let { context.getString(R.string.context_breakdown_messages) to it },
-    )
+        ?.takeIf { it.isNotBlank() } ?: return null
+    return DshUsageReader.latestSession(root)?.context
 }
 
 /** 用量药丸：点开是「本轮用量」详情（客户端的 TurnUsagePanel）。 */
