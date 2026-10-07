@@ -190,6 +190,45 @@ internal class DshExtensionsStore(
         }
     }
 
+    /** 装过哪些插件（界面只给这些"卸载"入口）。 */
+    var installedPlugins by mutableStateOf<List<String>>(emptyList())
+        private set
+
+    fun refreshInstalledPlugins() {
+        scope.launch {
+            installedPlugins = withContext(Dispatchers.IO) {
+                DshPluginInstaller.installed(appContext)
+            }
+        }
+    }
+
+    /** 卸一个 Heta 装过的插件：卸完重读清单（那一行要从列表里消失）。 */
+    fun uninstallPlugin(id: String) {
+        if (working) return
+        working = true
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { DshPluginInstaller.uninstall(appContext, id) }
+                    .getOrElse { DshPluginInstaller.Outcome.Failed(it.message ?: "卸载失败") }
+            }
+            working = false
+            when (outcome) {
+                is DshPluginInstaller.Outcome.Installed -> {
+                    message = appContext.getString(R.string.extensions_plugin_uninstalled, outcome.id)
+                    messageIsError = false
+                    refreshInstalledPlugins()
+                    DshLiveInventoryCache.invalidate()
+                    load(explicit = true)
+                }
+
+                is DshPluginInstaller.Outcome.Failed -> {
+                    message = appContext.getString(R.string.extensions_plugin_install_failed, outcome.reason)
+                    messageIsError = true
+                }
+            }
+        }
+    }
+
     /** 顶部那个刷新按钮：显式重探一次 —— 界面上唯一一个"一定会起 dsh"的入口。 */
     fun reload() = load(explicit = true)
 

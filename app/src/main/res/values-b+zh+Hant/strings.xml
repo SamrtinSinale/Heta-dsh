@@ -1403,6 +1403,10 @@
   <string name="extensions_preset_conditional">視條件而定</string>
   <string name="extensions_preset_condition">條件</string>
   <string name="extensions_preset_broken_summary">這個預設現在載入不了：%1$s</string>
+  <string name="extensions_uninstall_plugin">解除安裝外掛</string>
+  <string name="extensions_uninstall">解除安裝</string>
+  <string name="extensions_uninstall_empty">還沒有從這裡裝過外掛。</string>
+  <string name="extensions_plugin_uninstalled">已解除安裝 %1$s，下一次對話生效。</string>
   <string name="extensions_add_plugin">新增外掛</string>
   <string name="extensions_add_plugin_hint">輸入外掛的套件名、GitHub 倉庫網址或本機目錄路徑。</string>
   <string name="extensions_add_plugin_example">例如 dsh-plugin-whale-pet</string>

@@ -1415,6 +1415,10 @@
   <string name="extensions_preset_conditional">视条件而定</string>
   <string name="extensions_preset_condition">条件</string>
   <string name="extensions_preset_broken_summary">这个预设现在加载不了：%1$s</string>
+  <string name="extensions_uninstall_plugin">卸载插件</string>
+  <string name="extensions_uninstall">卸载</string>
+  <string name="extensions_uninstall_empty">还没有从这里装过插件。</string>
+  <string name="extensions_plugin_uninstalled">已卸载 %1$s，下一次对话生效。</string>
   <string name="extensions_add_plugin">添加插件</string>
   <string name="extensions_add_plugin_hint">输入插件的包名、GitHub 仓库地址或本地目录路径。</string>
   <string name="extensions_add_plugin_example">例如 dsh-plugin-whale-pet</string>

@@ -169,6 +169,7 @@ internal object DshPluginInstaller {
                 }
             }
             addPatchRow(context, runtimeRoot, moduleName)
+            remember(context, moduleName)
             Outcome.Installed(moduleName)
         }.getOrElse { error ->
             Log.w(TAG, "装插件失败：$raw", error)
@@ -186,8 +187,43 @@ internal object DshPluginInstaller {
             error("删不掉目录：${directory.absolutePath}")
         }
         DshProfileStore.forRuntime(runtimeRoot).setPluginEnabled(id, id, enabled = false)
+        forget(context, id)
         Outcome.Installed(id)
     }.getOrElse { error -> Outcome.Failed(error.message ?: error::class.java.simpleName) }
+
+    /**
+     * Heta 自己装过哪些插件（界面只给这些"卸载"入口）。
+     *
+     * 为什么要有这本账：`node_modules` 里有 169 个随包安装的官方包，删一个 dsh 就废了 —— 界面上
+     * 绝不能对任意模块名都能卸。账本放在 runtime 目录里（App 直接读写，不需要 su）。
+     */
+    fun installed(context: Context): List<String> {
+        val file = manifestFile(context)
+        if (!file.isFile) return emptyList()
+        return runCatching {
+            val array = org.json.JSONArray(file.readText())
+            (0 until array.length()).mapNotNull { array.optString(it).takeIf { id -> id.isNotBlank() } }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun manifestFile(context: Context): File =
+        File(DshRuntimeInstaller.runtimeDirectory(context), MANIFEST_RELATIVE)
+
+    private fun remember(context: Context, id: String) {
+        writeManifest(context, installed(context).plus(id).distinct().sorted())
+    }
+
+    private fun forget(context: Context, id: String) {
+        writeManifest(context, installed(context).filterNot { it == id })
+    }
+
+    private fun writeManifest(context: Context, ids: List<String>) {
+        runCatching {
+            val file = manifestFile(context)
+            file.parentFile?.mkdirs()
+            file.writeText(org.json.JSONArray(ids).toString())
+        }.onFailure { Log.w(TAG, "装过哪些插件这本账写不动", it) }
+    }
 
     /** 读一个插件目录的模块名（package.json 的 `name`）。 */
     fun moduleNameOf(directory: File): String? =
@@ -243,6 +279,7 @@ internal object DshPluginInstaller {
     }
 
     private const val MODULES_RELATIVE = "opt/dsh/node_modules"
+    private const val MANIFEST_RELATIVE = "opt/dsh/heta-installed-plugins.json"
     private const val TIMEOUT_MS = 60_000
     private const val USER_AGENT = "heta-plugin-installer"
 }

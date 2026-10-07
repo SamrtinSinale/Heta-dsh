@@ -1437,6 +1437,10 @@
   <string name="extensions_preset_conditional">depends on a condition</string>
   <string name="extensions_preset_condition">Condition</string>
   <string name="extensions_preset_broken_summary">This preset cannot be loaded right now: %1$s</string>
+  <string name="extensions_uninstall_plugin">Uninstall plugin</string>
+  <string name="extensions_uninstall">Uninstall</string>
+  <string name="extensions_uninstall_empty">No plugins installed from here yet.</string>
+  <string name="extensions_plugin_uninstalled">Uninstalled %1$s; it takes effect in the next conversation.</string>
   <string name="extensions_add_plugin">Add plugin</string>
   <string name="extensions_add_plugin_hint">Enter a package name, GitHub repository URL, or local directory path for the plugin.</string>
   <string name="extensions_add_plugin_example">e.g. dsh-plugin-whale-pet</string>

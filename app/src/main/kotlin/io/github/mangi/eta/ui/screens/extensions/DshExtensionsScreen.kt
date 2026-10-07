@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -111,6 +112,7 @@ internal fun DshExtensionsScreen(
     var query by remember { mutableStateOf("") }
     // 「添加插件」弹窗：状态放在 scaffold **外面** —— 弹窗挂在 scaffold 之前，取不到里面的局部量。
     var showAddPlugin by remember { mutableStateOf(false) }
+    var showUninstallPlugin by remember { mutableStateOf(false) }
     // 两个分组**默认都收起**（真机反馈原话："会话插件和全局插件默认是收纳的不是展开的"）。
     // 行数写在标题上，点标题展开；搜索时两组都强制展开（官方口径）。
     var sessionExpanded by remember { mutableStateOf(false) }
@@ -119,6 +121,16 @@ internal fun DshExtensionsScreen(
     // 不改任何设置 —— 真机反馈："插件分类应该是会话插件右边选择标准模式还是 ptc"。
     var viewedPresetId by remember { mutableStateOf<String?>(null) }
 
+    DshUninstallPluginDialog(
+        show = showUninstallPlugin,
+        working = store.working,
+        installed = store.installedPlugins,
+        onDismiss = { showUninstallPlugin = false },
+        onUninstall = { id ->
+            store.uninstallPlugin(id)
+            showUninstallPlugin = false
+        },
+    )
     DshAddPluginDialog(
         show = showAddPlugin,
         working = store.working,
@@ -213,6 +225,37 @@ internal fun DshExtensionsScreen(
                 ListEmptyState(title = stringResource(R.string.extensions_unreadable))
             }
             return@MiuixScaffoldPage
+        }
+
+        // 卸载插件：只列 Heta 自己装过的（账本），点一下卸掉。
+        item(key = "uninstall_plugin") {
+            EtaPreferenceGroup {
+                EtaPreferenceGroupItem(isFirst = true, isLast = true, hasLeading = true) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                store.refreshInstalledPlugins()
+                                showUninstallPlugin = true
+                            }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.extensions_uninstall_plugin),
+                            style = MiuixTheme.textStyles.body1,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        )
+                    }
+                }
+            }
         }
 
         // 添加插件：一行入口，点开是客户端那个弹窗（包名 / GitHub / 本地目录 + 安装源）。
