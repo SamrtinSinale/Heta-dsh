@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
+import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -538,7 +539,7 @@ internal fun DshDeepDivingLabel(modifier: Modifier = Modifier) {
     val text = if (elapsedMs < 1_000L) {
         stringResource(R.string.chat_deep_diving)
     } else {
-        stringResource(R.string.chat_deep_diving_for, formatDurationMs(context, elapsedMs))
+        stringResource(R.string.chat_deep_diving_for, formatRunDurationMs(context, elapsedMs))
     }
     Text(
         text = text,
@@ -546,6 +547,25 @@ internal fun DshDeepDivingLabel(modifier: Modifier = Modifier) {
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = modifier,
     )
+}
+
+/**
+ * 「进行中的一轮」那种时长：**整秒**，单位分开拼（`9秒` / `2分42秒` / `1小时2分3秒`）。
+ *
+ * 为什么不用 [formatDurationMs]：那是**会话统计面板**里的格式（照客户端 `formatDuration`，带一位
+ * 小数 `12.3秒`）。客户端给进行中的一轮用的是另一套 `formatRunDuration` —— 整秒，永远没有 `.0`。
+ * 用户原话："九秒就 9 秒，你还非得加个点 0"。
+ */
+internal fun formatRunDurationMs(context: Context, ms: Long): String {
+    val total = (ms / 1000L).coerceAtLeast(0L)
+    val hours = total / 3600L
+    val minutes = (total % 3600L) / 60L
+    val seconds = total % 60L
+    return buildString {
+        if (hours > 0L) append(context.getString(R.string.duration_hours, hours))
+        if (total >= 60L) append(context.getString(R.string.duration_minutes_unit, minutes))
+        append(context.getString(R.string.duration_seconds_unit, seconds))
+    }
 }
 
 // ── Agent 结果 ───────────────────────────────────────────────────────

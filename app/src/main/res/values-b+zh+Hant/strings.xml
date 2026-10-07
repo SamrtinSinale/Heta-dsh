@@ -1407,6 +1407,9 @@
   <string name="extensions_uninstall">解除安裝</string>
   <string name="extensions_uninstall_empty">還沒有從這裡裝過外掛。</string>
   <string name="extensions_plugin_uninstalled">已解除安裝 %1$s，下一次對話生效。</string>
+  <string name="duration_hours">%1$d小時</string>
+  <string name="duration_minutes_unit">%1$d分</string>
+  <string name="duration_seconds_unit">%1$d秒</string>
   <string name="chat_deep_diving">深度求索中</string>
   <string name="chat_deep_diving_for">深度求索中，用時 %1$s ···</string>
   <string name="extensions_add_plugin">新增外掛</string>
