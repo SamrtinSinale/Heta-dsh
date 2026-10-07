@@ -15,6 +15,7 @@ import io.github.mangi.eta.agent.dsh.DshLiveEntry
 import io.github.mangi.eta.agent.dsh.DshLiveInventory
 import io.github.mangi.eta.agent.dsh.DshLiveInventoryCache
 import io.github.mangi.eta.agent.dsh.DshPluginInventory
+import io.github.mangi.eta.agent.dsh.DshPluginInstaller
 import io.github.mangi.eta.agent.dsh.DshPresetPlane
 import io.github.mangi.eta.agent.dsh.DshPresetSelection
 import io.github.mangi.eta.agent.dsh.DshProfileStore
@@ -155,6 +156,40 @@ internal class DshExtensionsStore(
         DshLiveInventoryCache.attach(appContext.cacheDir)
         // 偏好读失败不该拦着读清单：选不中就用官方默认值（[DshPresetUi] 里那一次读会兜）。
         load(explicit = false)
+    }
+
+    /**
+     * 装一个插件（包名 / GitHub 仓库 / 本地目录）。
+     *
+     * 装完**重读一次清单**：新插件的行要出现在列表里（那是"装上了"的唯一证据）。装失败的原因
+     * 原样显示 —— 取包、解包、写补丁行，每一处的错都不一样，包一层反而盖住。
+     */
+    fun installPlugin(spec: String, registry: DshPluginInstaller.Registry) {
+        if (working) return
+        working = true
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { DshPluginInstaller.install(appContext, spec, registry) }
+                    .getOrElse { DshPluginInstaller.Outcome.Failed(it.message ?: "安装失败") }
+            }
+            working = false
+            when (outcome) {
+                is DshPluginInstaller.Outcome.Installed -> {
+                    message = appContext.getString(R.string.extensions_plugin_installed, outcome.id)
+                    messageIsError = false
+                    DshLiveInventoryCache.invalidate()
+                    load(explicit = true)
+                }
+
+                is DshPluginInstaller.Outcome.Failed -> {
+                    message = appContext.getString(
+                        R.string.extensions_plugin_install_failed,
+                        outcome.reason,
+                    )
+                    messageIsError = true
+                }
+            }
+        }
     }
 
     /** 顶部那个刷新按钮：显式重探一次 —— 界面上唯一一个"一定会起 dsh"的入口。 */
