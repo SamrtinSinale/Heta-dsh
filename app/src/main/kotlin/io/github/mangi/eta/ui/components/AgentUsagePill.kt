@@ -333,17 +333,14 @@ internal fun AgentSessionStatsPills(
             sessionTotals = true,
             turns = totals.turn,
         )
-        if (total != null) {
-            AgentUsagePill(
-                usage = totals,
-                total = total,
-                locale = locale,
-                modifier = Modifier.padding(horizontal = 6.dp),
-            )
-        } else {
-            // 还没有任何 token 数：只画那个图标，别把整颗药丸藏起来。
-            AgentStatPill(icon = Icons.Rounded.Storage, label = "")
-        }
+        // **永远可点**：还没有 token 数就按 0 算（用户："哪怕是 0 tok"）——空壳图标点不开是
+        // 上一版的毛病，那不是他想要的。
+        AgentUsagePill(
+            usage = totals,
+            total = total ?: 0,
+            locale = locale,
+            modifier = Modifier.padding(horizontal = 6.dp),
+        )
     }
 }
 
@@ -551,6 +548,15 @@ internal fun statsDetailRows(
     locale: java.util.Locale,
 ): List<Pair<String, String>> {
     val rows = ArrayList<Pair<String, String>>(4)
+    // 一个时间数都没报：面板也要有内容（同上，全 0）。
+    if (usage.llmMs == null && usage.toolMs == null && usage.ttftMs == null && usage.decodeMs == null) {
+        return listOf(
+            context.getString(R.string.stats_dialog_llm_time) to formatDurationMs(context, 0L),
+            context.getString(R.string.stats_dialog_tool_time) to formatDurationMs(context, 0L),
+            context.getString(R.string.stats_dialog_speed) to
+                context.getString(R.string.stats_tokens_per_second, "0"),
+        )
+    }
     // 有数就画：插件报回来的 0 也是"量过、就是 0"，不该整行消失（用户反馈工具调用用时不见了）。
     // 只有**没报**（null）才不画 —— 那才是"不知道"。
     usage.llmMs?.let {
@@ -621,6 +627,16 @@ internal fun agentUsageDetailRows(
     fun exact(value: Int): String =
         context.getString(R.string.usage_pill_count, formatExactTokenCount(value, locale))
     val rows = ArrayList<Pair<String, String>>(5)
+    // 一个数都没报（还没开口 / 老回复）：面板也要有内容 —— 全 0，用户明确说了"哪怕是 0 tok"。
+    if (usage.inputTokens == null && usage.cachedTokens == null &&
+        usage.cacheWriteTokens == null && usage.outputTokens == null
+    ) {
+        return listOf(
+            context.getString(R.string.usage_detail_uncached_input) to exact(0),
+            context.getString(R.string.usage_detail_cache_read) to exact(0),
+            context.getString(R.string.usage_detail_output) to exact(0),
+        )
+    }
     cacheHitPercent(usage.cachedTokens, usage.inputTokens, usage.cacheWriteTokens)?.let { percent ->
         rows += context.getString(R.string.usage_detail_cache_hit) to "$percent%"
     }
