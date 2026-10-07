@@ -1110,6 +1110,7 @@
   <string name="context_breakdown_tools">工具定義</string>
   <string name="context_breakdown_messages">對話訊息</string>
   <string name="context_breakdown_approx">~%1$s</string>
+  <string name="usage_stats_turns_only">%1$d 輪</string>
   <string name="usage_stats_steps_only">%1$d 步</string>
   <string name="context_usage_used">上下文已用 %1$s</string>
   <string name="context_usage_used_none">上下文已用</string>

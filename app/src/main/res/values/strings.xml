@@ -1234,6 +1234,7 @@
   <string name="context_breakdown_tools">Tool definitions</string>
   <string name="context_breakdown_messages">Conversation messages</string>
   <string name="context_breakdown_approx">~%1$s</string>
+  <string name="usage_stats_turns_only">%1$d turns</string>
   <string name="usage_stats_steps_only">%1$d steps</string>
   <string name="context_usage_used">Context used %1$s</string>
   <string name="context_usage_used_none">Context used</string>

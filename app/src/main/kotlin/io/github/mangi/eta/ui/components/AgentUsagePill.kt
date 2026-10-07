@@ -217,12 +217,17 @@ internal fun AgentTimePill(
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     var showDetails by remember { mutableStateOf(false) }
-    val steps = usage.steps ?: 0
+    val steps = usage.steps
     val label = buildString {
-        if (sessionTotals) {
-            append(stringResource(R.string.usage_stats_counts, turns ?: 0, steps))
-        } else {
-            append(stringResource(R.string.usage_stats_steps_only, steps))
+        // 缺哪一段就不写哪一段：拿 0 顶上等于编数（"3 轮 0 步"看着就像真走了 0 步）。
+        when {
+            sessionTotals && turns != null && steps != null ->
+                append(stringResource(R.string.usage_stats_counts, turns, steps))
+
+            sessionTotals && turns != null ->
+                append(stringResource(R.string.usage_stats_turns_only, turns))
+
+            steps != null -> append(stringResource(R.string.usage_stats_steps_only, steps))
         }
         tokensPerSecond(usage)?.let { speed ->
             append(" · ")
@@ -314,7 +319,7 @@ internal fun AgentSessionStatsPills(
     totals: TokenUsageUi,
     modifier: Modifier = Modifier,
 ) {
-    if (totals.isEmpty) return
+    // **不能是空的**：还没开口时也要有这两个图标（用户要求），有数了再把数字补上。
     val locale = LocalConfiguration.current.locales[0]
     val total = billedTokenTotal(totals)
     Row(
@@ -322,14 +327,12 @@ internal fun AgentSessionStatsPills(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (totals.steps != null) {
-            AgentTimePill(
-                usage = totals,
-                modifier = Modifier.padding(horizontal = 6.dp),
-                sessionTotals = true,
-                turns = totals.turn,
-            )
-        }
+        AgentTimePill(
+            usage = totals,
+            modifier = Modifier.padding(horizontal = 6.dp),
+            sessionTotals = true,
+            turns = totals.turn,
+        )
         if (total != null) {
             AgentUsagePill(
                 usage = totals,
@@ -337,6 +340,9 @@ internal fun AgentSessionStatsPills(
                 locale = locale,
                 modifier = Modifier.padding(horizontal = 6.dp),
             )
+        } else {
+            // 还没有任何 token 数：只画那个图标，别把整颗药丸藏起来。
+            AgentStatPill(icon = Icons.Rounded.Storage, label = "")
         }
     }
 }
@@ -575,7 +581,9 @@ internal fun sessionTotalsFrom(messages: List<AgentChatMessageUi>): TokenUsageUi
     messages.filterIsInstance<AgentMessageUi>().forEach { message ->
         val usage = message.usage ?: return@forEach
         total = total.copy(
-            turn = (total.turn ?: 0) + (usage.turn?.let { 1 } ?: 0),
+            // 一轮 = 一条报过用量的回复。以前要求 `usage.turn != null` 才算，于是 3.0.8.19 之前
+            // 存下来的那些回复一条都不计（用户看到的就是"不记每步每轮"）。
+            turn = (total.turn ?: 0) + if (usage.isEmpty) 0 else 1,
             steps = sumInt(total.steps, usage.steps),
             inputTokens = sumInt(total.inputTokens, usage.inputTokens),
             outputTokens = sumInt(total.outputTokens, usage.outputTokens),
