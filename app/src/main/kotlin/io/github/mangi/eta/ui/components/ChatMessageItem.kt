@@ -683,11 +683,12 @@ private fun AgentMessageBlock(
                             )
                         }
                     }
-                    // 用量与时间：**复制 / 删除右边**那两个图标（用户要的位置）。
-                    // 点开分别是「本轮用量」与这一步的模型用时 / 工具调用用时 / TTFT / TPS。
-                    message.usage?.let { usage ->
+                    // 用量图标 + **结束时间**（复制 / 删除右边）。时间照客户端
+                    // `formatMessageClock` 那套：当天 `HH:mm`、同年 `{m}月{d}日 HH:mm`、跨年带年份。
+                    val usage = message.usage
+                    if (usage != null) {
                         AgentUsageIconButton(usage = usage)
-                        AgentTimeIconButton(usage = usage)
+                        AgentMessageClock(usage = usage)
                     }
                     if (message.characterEditable && message.candidateCount > 1) {
                         Spacer(Modifier.weight(1f))

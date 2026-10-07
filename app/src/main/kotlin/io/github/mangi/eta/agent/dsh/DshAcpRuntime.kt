@@ -399,6 +399,7 @@ internal class DshAcpRuntime(
                     ttftSteps = turn.ttftSteps,
                     decodeMs = turn.decodeMs,
                     decodeTokens = turn.decodeTokens,
+                    finishedAtMs = turn.at.takeIf { it > 0L },
                 ),
             )
         )

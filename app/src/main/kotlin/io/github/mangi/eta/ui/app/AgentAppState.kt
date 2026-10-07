@@ -2965,6 +2965,7 @@ private fun AgentTokenUsage.toUi(): TokenUsageUi =
         ttftSteps = ttftSteps,
         decodeMs = decodeMs,
         decodeTokens = decodeTokens,
+        finishedAtMs = finishedAtMs,
     )
 
 private fun isAgentAccessibilityEnabled(context: Context): Boolean {

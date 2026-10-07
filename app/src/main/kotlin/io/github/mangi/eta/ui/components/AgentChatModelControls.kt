@@ -6,10 +6,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -365,6 +368,24 @@ internal fun AgentContextUsageButton(
                     )
                 }
                 HorizontalDivider(modifier = Modifier.width(ContextPanelWidth))
+                // 进度条：客户端那个面板就是"一条进度条 + 占用值 + 分项"。进度取
+                // `contextTokens / contextWindow`（没有窗口就画成空条）。
+                Box(
+                    modifier = Modifier
+                        .width(ContextPanelWidth)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(MiuixTheme.colorScheme.secondaryContainer),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth((usage.progress ?: 0f).coerceIn(0f, 1f))
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(progressColor),
+                    )
+                }
                 Text(
                     text = summary,
                     style = MiuixTheme.textStyles.footnote2,

@@ -73,11 +73,12 @@ class AgentUsagePillTest {
         // 顺序照客户端：缓存命中 → 未缓存输入 → 缓存读取 → 缓存写入 → 输出；值是**精确值**。
         assertEquals(5, rows.size)
         assertTrue(rows[0].second.endsWith("%"))
-        assertEquals("900", rows[1].second)
-        assertEquals("24,000", rows[2].second)
-        assertEquals("1,200", rows[3].second)
-        assertTrue(rows[4].second.startsWith("10,000"))
-        assertTrue(rows[4].second.contains("3,000"))
+        // 客户端 `exactCount` 的写法是 `{count} tok` —— 单位不能省。
+        assertEquals("900 tok", rows[1].second)
+        assertEquals("24,000 tok", rows[2].second)
+        assertEquals("1,200 tok", rows[3].second)
+        assertTrue(rows[4].second.startsWith("10,000 tok"))
+        assertTrue(rows[4].second.contains("3,000 tok"))
     }
 
     @Test
@@ -123,7 +124,7 @@ class AgentUsagePillTest {
     }
 
     @Test
-    fun statsRowsFollowTheClientAndSkipZeroes() {
+    fun statsRowsAreDrawnWheneverThePluginReportedThem() {
         val rows = statsDetailRows(
             context,
             TokenUsageUi(
@@ -137,10 +138,31 @@ class AgentUsagePillTest {
             Locale.US,
         )
 
-        // 工具用时是 0 → 那一行不画；其余三行照客户端的顺序与措辞。
-        assertEquals(3, rows.size)
-        assertTrue(rows.none { it.first.contains("Tool") })
-        assertTrue(rows[2].second.contains("tok/s"))
+        // 工具用时**报回来了 0**（量过、就是 0）→ 那一行要画；只有没报（null）才不画。
+        assertEquals(4, rows.size)
+        assertTrue(rows.any { it.first.contains("Tool") })
+        assertTrue(rows.last().second.contains("tok/s"))
+
+        // 没报工具用时（原生那条会话）：那一行不出现。
+        val native = statsDetailRows(
+            context,
+            TokenUsageUi(llmMs = 1_000, decodeMs = 1_000, decodeTokens = 50),
+            Locale.US,
+        )
+        assertEquals(2, native.size)
+        assertTrue(native.none { it.first.contains("Tool") })
+    }
+
+    @Test
+    fun messageClockFollowsTheClientRules() {
+        val now = 1_700_000_000_000L  // 2023-11-14 前后（本地时区）
+        val sameDay = formatMessageClock(context, now + 3_600_000L, now)
+        // 当天：只有 HH:mm（五位数，中间一个冒号）。
+        assertEquals(5, sameDay.length)
+        assertTrue(sameDay.contains(":"))
+
+        val sameYear = formatMessageClock(context, now + 86_400_000L * 40, now)
+        assertTrue("跨天要带日期：$sameYear", sameYear.length > sameDay.length)
     }
 
     @Test

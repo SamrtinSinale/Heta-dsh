@@ -350,6 +350,7 @@ private fun AgentChatScaffold(
                 input = input,
                 modelPickerState = modelPickerState,
                 isCompacting = isCompacting,
+                sessionTotals = sessionTotals,
                 contextUsage = contextUsage,
                 showContextUsage = hasMessages,
                 isStreaming = isStreaming,
@@ -410,12 +411,6 @@ private fun AgentChatScaffold(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if (frostEnabled) Modifier.layerBackdrop(messageBackdrop) else Modifier),
-            )
-            // 输入框**下面**那一行：会话统计 + Token 用量（居中）。会话累计由 `AgentChatBody`
-            // 算好当参数传进来（这个 composable 手里只有 visibleMessages）。
-            AgentSessionStatsPills(
-                totals = sessionTotals,
-                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }
@@ -903,6 +898,7 @@ private fun AgentChatBottomBar(
     modelPickerState: AgentModelPickerUiState,
     isCompacting: Boolean,
     contextUsage: AgentContextUsageUi,
+    sessionTotals: TokenUsageUi,
     showContextUsage: Boolean,
     isStreaming: Boolean,
     reasoningEffort: ReasoningEffort,
@@ -1020,6 +1016,13 @@ private fun AgentChatBottomBar(
                 onRemoveFileReference = onRemoveFileReference,
                 onCancelMessageEdit = onCancelMessageEdit,
                 modifier = Modifier.fillMaxWidth(),
+            )
+            // 会话统计 + Token 用量：**输入框下面**、整个底部区域的最底下一行（居中）。
+            // 放在这个带背景的 Column 里，才是真的"最底部"——放在 bottomBar 槽里当兄弟节点会被
+            // 那个槽按 Box 摆到最上面去（上一版就是这么错的）。
+            AgentSessionStatsPills(
+                totals = sessionTotals,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }

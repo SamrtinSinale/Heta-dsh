@@ -26,7 +26,7 @@ import androidx.room.migration.Migration
         CharacterEntity::class,
         UserPersonaEntity::class,
     ],
-    version = 23,
+    version = 24,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -66,6 +66,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_20_21,
                         MIGRATION_21_22,
                         MIGRATION_22_23,
+                        MIGRATION_23_24,
                     )
                     .addCallback(object : Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) { createTextChunkCleanup(db) }
@@ -82,6 +83,11 @@ internal abstract class EtaDatabase : RoomDatabase() {
                 instance?.close()
                 instance = null
             }
+        }
+
+        /** 23 → 24：回复动作行里那个**结束时间**（墙上时间）要能活过重启。 */
+        internal val MIGRATION_23_24 = Migration(23, 24) { database ->
+            database.execSQL("ALTER TABLE conversation_messages ADD COLUMN finished_at_ms INTEGER")
         }
 
         /**

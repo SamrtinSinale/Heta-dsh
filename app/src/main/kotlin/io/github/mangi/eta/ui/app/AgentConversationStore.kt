@@ -226,6 +226,7 @@ internal object AgentConversationStore {
                         ttftSteps = usage?.ttftSteps,
                         decodeMs = usage?.decodeMs,
                         decodeTokens = usage?.decodeTokens,
+                        finishedAtMs = usage?.finishedAtMs,
                     )
                 }
             }
@@ -305,6 +306,7 @@ internal object AgentConversationStore {
                     ttftSteps = ttftSteps,
                     decodeMs = decodeMs,
                     decodeTokens = decodeTokens,
+                    finishedAtMs = finishedAtMs,
                 ).takeUnless { it.isEmpty },
             )
 

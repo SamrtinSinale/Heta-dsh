@@ -109,6 +109,8 @@ data class TokenUsageUi(
     val ttftSteps: Int? = null,
     val decodeMs: Long? = null,
     val decodeTokens: Int? = null,
+    /** 这一轮结束的墙上时间（毫秒）：回复动作行里那个时间戳。 */
+    val finishedAtMs: Long? = null,
 ) {
     val isEmpty: Boolean
         get() = contextTokens == null &&
@@ -125,7 +127,8 @@ data class TokenUsageUi(
             ttftMs == null &&
             ttftSteps == null &&
             decodeMs == null &&
-            decodeTokens == null
+            decodeTokens == null &&
+            finishedAtMs == null
 }
 
 @Immutable

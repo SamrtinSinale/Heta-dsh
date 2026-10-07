@@ -106,6 +106,7 @@ internal data class ConversationMessageEntity(
     @ColumnInfo(name = "ttft_steps") val ttftSteps: Int? = null,
     @ColumnInfo(name = "decode_ms") val decodeMs: Long? = null,
     @ColumnInfo(name = "decode_tokens") val decodeTokens: Int? = null,
+    @ColumnInfo(name = "finished_at_ms") val finishedAtMs: Long? = null,
     @ColumnInfo(name = "elapsed_seconds") val elapsedSeconds: Int? = null,
     @ColumnInfo(name = "tool_name") val toolName: String? = null,
     @ColumnInfo(name = "tool_status") val toolStatus: String? = null,

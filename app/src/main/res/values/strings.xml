@@ -1238,6 +1238,9 @@
   <string name="context_usage_used">Context used %1$s</string>
   <string name="context_usage_used_none">Context used</string>
   <string name="context_usage_summary">~%1$s / %2$s</string>
+  <string name="clock_md">%1$d/%2$d</string>
+  <string name="clock_ymd">%1$d-%2$d-%3$d</string>
+  <string name="clock_with_time">%1$s %2$s</string>
   <string name="usage_pill_consumed">Usage %1$s</string>
   <string name="usage_pill_count">%1$s tok</string>
   <string name="usage_stats_counts">%1$d turns %2$d steps</string>

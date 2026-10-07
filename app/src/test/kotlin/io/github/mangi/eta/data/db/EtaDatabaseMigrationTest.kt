@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class EtaDatabaseMigrationTest {
     @Test
-    fun migration6To23PreservesDataAndMovesCompleteConversationContext() {
+    fun migration6To24PreservesDataAndMovesCompleteConversationContext() {
         val context = RuntimeEnvironment.getApplication() as Context
         val databaseName = "migration-${UUID.randomUUID()}.db"
         createVersion6Database(context, databaseName)
@@ -56,6 +56,7 @@ class EtaDatabaseMigrationTest {
                 EtaDatabase.MIGRATION_20_21,
                 EtaDatabase.MIGRATION_21_22,
                 EtaDatabase.MIGRATION_22_23,
+                EtaDatabase.MIGRATION_23_24,
             )
             .build()
         try {
@@ -133,6 +134,7 @@ class EtaDatabaseMigrationTest {
             assertEquals(null, migratedMessage.ttftSteps)
             assertEquals(null, migratedMessage.decodeMs)
             assertEquals(null, migratedMessage.decodeTokens)
+            assertEquals(null, migratedMessage.finishedAtMs)
             assertEquals(emptyList<RuntimeInFlightRunWithEvents>(), inFlightRuns)
             assertEquals(listOf("mcp-1"), mcpServers.map { it.id })
             assertEquals(null, mcpServers.single().toolsExpireAt)

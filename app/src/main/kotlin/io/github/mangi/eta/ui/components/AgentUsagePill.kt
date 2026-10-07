@@ -117,32 +117,54 @@ internal fun AgentUsageIconButton(usage: TokenUsageUi, modifier: Modifier = Modi
     }
 }
 
-/** 时间图标：点开是这一步 / 这一轮的 模型用时 / 工具调用用时 / TTFT / TPS。 */
+/**
+ * 回复的**结束时间**（客户端 `formatMessageClock`）：
+ *   · 当天 → `HH:mm`；
+ *   · 同年 → `{m}月{d}日 HH:mm`（英文是 `{m}/{d} HH:mm`）；
+ *   · 跨年 → `{y}年{m}月{d}日 HH:mm`。
+ *
+ * 没有时间（原生那条会话不写 `at`）时什么都不画 —— 不编一个现在的时间出来。
+ */
 @Composable
-internal fun AgentTimeIconButton(usage: TokenUsageUi, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val locale = LocalConfiguration.current.locales[0]
-    var showDetails by remember { mutableStateOf(false) }
-    val rows = remember(usage, locale) { statsDetailRows(context, usage, locale) }
-    if (rows.isEmpty()) return
-    Box(modifier = modifier) {
-        AgentActionIcon(
-            icon = Icons.Rounded.Speed,
-            label = stringResource(R.string.stats_dialog_title),
-            onClick = { showDetails = true },
+internal fun AgentMessageClock(usage: TokenUsageUi, modifier: Modifier = Modifier) {
+    val time = usage.finishedAtMs ?: return
+    Text(
+        text = formatMessageClock(LocalContext.current, time, System.currentTimeMillis()),
+        style = MiuixTheme.textStyles.footnote2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.75f),
+        maxLines = 1,
+        modifier = modifier.padding(start = 4.dp),
+    )
+}
+
+/** 上面那条规则的纯函数版（好单测）。 */
+internal fun formatMessageClock(context: Context, timeMs: Long, nowMs: Long): String {
+    val time = java.util.Calendar.getInstance().apply { timeInMillis = timeMs }
+    val now = java.util.Calendar.getInstance().apply { timeInMillis = nowMs }
+    val clock = String.format(
+        java.util.Locale.ROOT,
+        "%02d:%02d",
+        time.get(java.util.Calendar.HOUR_OF_DAY),
+        time.get(java.util.Calendar.MINUTE),
+    )
+    val sameDay = time.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) &&
+        time.get(java.util.Calendar.DAY_OF_YEAR) == now.get(java.util.Calendar.DAY_OF_YEAR)
+    if (sameDay) return clock
+    val template = if (time.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR)) {
+        context.getString(
+            R.string.clock_md,
+            time.get(java.util.Calendar.MONTH) + 1,
+            time.get(java.util.Calendar.DAY_OF_MONTH),
         )
-        WindowListPopup(
-            show = showDetails,
-            alignment = PopupPositionProvider.Align.TopEnd,
-            onDismissRequest = { showDetails = false },
-        ) {
-            AgentStatsDetails(
-                context = context,
-                rows = rows,
-                title = stringResource(R.string.stats_dialog_title),
-            )
-        }
+    } else {
+        context.getString(
+            R.string.clock_ymd,
+            time.get(java.util.Calendar.YEAR),
+            time.get(java.util.Calendar.MONTH) + 1,
+            time.get(java.util.Calendar.DAY_OF_MONTH),
+        )
     }
+    return context.getString(R.string.clock_with_time, template, clock)
 }
 
 /** 一个药丸：图标 + 文本；[onClick] 为空时不可点（客户端 TimePill 没有时间数据时就是这样）。 */
@@ -531,14 +553,16 @@ internal fun statsDetailRows(
     locale: java.util.Locale,
 ): List<Pair<String, String>> {
     val rows = ArrayList<Pair<String, String>>(4)
-    usage.llmMs?.takeIf { it > 0 }?.let {
+    // 有数就画：插件报回来的 0 也是"量过、就是 0"，不该整行消失（用户反馈工具调用用时不见了）。
+    // 只有**没报**（null）才不画 —— 那才是"不知道"。
+    usage.llmMs?.let {
         rows += context.getString(R.string.stats_dialog_llm_time) to formatDurationMs(context, it)
     }
-    usage.toolMs?.takeIf { it > 0 }?.let {
+    usage.toolMs?.let {
         rows += context.getString(R.string.stats_dialog_tool_time) to formatDurationMs(context, it)
     }
     val ttftSteps = usage.ttftSteps ?: 0
-    usage.ttftMs?.takeIf { it > 0 && ttftSteps > 0 }?.let {
+    usage.ttftMs?.takeIf { ttftSteps > 0 }?.let {
         rows += context.getString(R.string.stats_dialog_ttft) to formatDurationMs(context, it / ttftSteps)
     }
     tokensPerSecond(usage)?.let {
@@ -593,7 +617,9 @@ internal fun agentUsageDetailRows(
     usage: TokenUsageUi,
     locale: Locale,
 ): List<Pair<String, String>> {
-    fun exact(value: Int): String = formatExactTokenCount(value, locale)
+    // 客户端 `exactCount` 的写法是 `{count} tok` —— 数字后面那个单位不能省（用户点了这一条）。
+    fun exact(value: Int): String =
+        context.getString(R.string.usage_pill_count, formatExactTokenCount(value, locale))
     val rows = ArrayList<Pair<String, String>>(5)
     cacheHitPercent(usage.cachedTokens, usage.inputTokens, usage.cacheWriteTokens)?.let { percent ->
         rows += context.getString(R.string.usage_detail_cache_hit) to "$percent%"

@@ -929,6 +929,7 @@ internal object AgentRuntimeWire {
         usage.ttftSteps?.let { putInt("usage_ttft_steps", it) }
         usage.decodeMs?.let { putLong("usage_decode_ms", it) }
         usage.decodeTokens?.let { putInt("usage_decode_tokens", it) }
+        usage.finishedAtMs?.let { putLong("usage_finished_at", it) }
     }
 
     private fun Bundle.getTokenUsage(): AgentTokenUsage =
@@ -948,6 +949,7 @@ internal object AgentRuntimeWire {
             ttftSteps = optionalInt("usage_ttft_steps"),
             decodeMs = optionalLong("usage_decode_ms"),
             decodeTokens = optionalInt("usage_decode_tokens"),
+            finishedAtMs = optionalLong("usage_finished_at"),
         )
 
     private fun decodeCustomHeaders(raw: String?): List<CustomHeader> =
