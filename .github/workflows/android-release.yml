@@ -44,8 +44,8 @@ jobs:
     name: 构建 Release APK
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    permissions:
-      contents: write
+    outputs:
+      version_name: ${{ steps.version.outputs.version_name }}
 
     steps:
       - name: 检出代码
@@ -222,29 +222,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: 发布 GitHub Release
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release == true }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          VERSION_NAME: ${{ steps.version.outputs.version_name }}
-        run: |
-          set -euo pipefail
-          tag="${RELEASE_TAG:-v${VERSION_NAME}}"
-          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "::error::Release $tag 已存在，请通过 release_tag 指定其它标签。"
-            exit 1
-          fi
-          gh release create "$tag" \
-            "${{ steps.apk.outputs.release_path }}" \
-            --repo "${{ github.repository }}" \
-            --target "${{ github.sha }}" \
-            --title "Heta ${VERSION_NAME}" \
-            --generate-notes
 
   unit-tests:
     name: 单元测试（临时验证）
-    runs-on: ubuntu-latest
+    # Ubuntu 26 不再提供 qemu-user-static；真 chroot 冒烟依赖这个包及其路径。
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: 检出代码
@@ -351,3 +333,44 @@ jobs:
                       print((failure.text or "").strip()[:3000])
           print(f"总计失败 {failed} 个")
           PY
+
+  publish-release:
+    name: 发布 GitHub Release
+    # 构建与测试继续并行，但任何一项失败都不能发布可下载版本。
+    needs: [build-release-apk, unit-tests]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: 下载已验证的签名 APK
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: heta-${{ needs.build-release-apk.outputs.version_name }}-release-apk
+          path: release-apks
+
+      - name: 发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          VERSION_NAME: ${{ needs.build-release-apk.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG:-v${VERSION_NAME}}"
+          apk="release-apks/heta-${VERSION_NAME}-release.apk"
+          if [[ ! -s "$apk" ]]; then
+            echo "::error::未找到已验证的签名 APK：$apk"
+            exit 1
+          fi
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::Release $tag 已存在，请通过 release_tag 指定其它标签。"
+            exit 1
+          fi
+          gh release create "$tag" \
+            "$apk" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Heta ${VERSION_NAME}" \
+            --generate-notes
