@@ -1,12 +1,16 @@
 package io.github.mangi.eta.ui.screens.extensions
 
 import android.app.Application
+import android.os.SystemClock
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.BroadcastFrameClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -20,6 +24,11 @@ import androidx.compose.ui.unit.Density
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshPluginInstaller
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,6 +64,18 @@ class DshFlatControlsRenderingTest {
             surface.click(enabled)
             surface.click(disabled)
             assertEquals(1, clicks)
+        }
+    }
+
+    @Test
+    fun flatActionClickRecomposesItsLabel() {
+        val count = mutableStateOf(0)
+        withContent(content = {
+            DshFlatAction(text = "Count ${count.value}", onClick = { count.value++ })
+        }) { surface ->
+            surface.click(surface.action("Count 0"))
+            assertEquals(1, count.value)
+            assertEquals(Role.Button, surface.action("Count 1").config[SemanticsProperties.Role])
         }
     }
 
@@ -144,20 +165,28 @@ class DshFlatControlsRenderingTest {
         }
     }
 
-    private class Surface(val view: ComposeView, private val height: Int) {
+    private class Surface(
+        val view: ComposeView,
+        private val height: Int,
+        private val frameClock: BroadcastFrameClock,
+    ) {
         fun string(id: Int): String = view.context.getString(id)
 
         fun refresh() {
-            // Let recomposition and the following measure/layout pass settle after each action.
-            repeat(2) {
-                ShadowLooper.idleMainLooper(100, TimeUnit.MILLISECONDS)
+            // Pump snapshots and recomposition frames explicitly, as EtaVoicePanelTouchTest does.
+            // Idling the looper alone leaves a window recomposer paused in a headless activity,
+            // so assertions after clicks otherwise keep reading the initial semantics tree.
+            repeat(30) {
+                Snapshot.sendApplyNotifications()
+                ShadowLooper.idleMainLooper(16, TimeUnit.MILLISECONDS)
+                frameClock.sendFrame(SystemClock.uptimeMillis() * 1_000_000L)
+                ShadowLooper.idleMainLooper()
                 view.measure(
                     View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST),
                 )
                 view.layout(0, 0, 320, view.measuredHeight)
             }
-            ShadowLooper.idleMainLooper(100, TimeUnit.MILLISECONDS)
         }
 
         fun nodes(): List<SemanticsNode> {
@@ -199,19 +228,26 @@ class DshFlatControlsRenderingTest {
         verify: (Surface) -> Unit,
     ) {
         val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val frameClock = BroadcastFrameClock()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + frameClock)
+        val recomposer = Recomposer(scope.coroutineContext)
         val view = ComposeView(controller.get())
         try {
+            scope.launch { recomposer.runRecomposeAndApplyChanges() }
+            view.setParentCompositionContext(recomposer)
             controller.get().setContentView(view)
             view.setContent {
                 CompositionLocalProvider(LocalDensity provides Density(1f, fontScale)) {
                     MiuixTheme { content() }
                 }
             }
-            val surface = Surface(view, height)
+            val surface = Surface(view, height, frameClock)
             surface.refresh()
             verify(surface)
         } finally {
             view.disposeComposition()
+            recomposer.cancel()
+            scope.cancel()
             controller.pause().stop().destroy()
         }
     }
