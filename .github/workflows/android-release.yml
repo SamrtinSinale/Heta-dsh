@@ -348,7 +348,7 @@ jobs:
       - name: 下载已验证的签名 APK
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: heta-${{ needs.build-release-apk.outputs.version_name }}-release-apk
+          name: heta-${{ needs.build-release-apk.outputs.version_name }}-release.apk
           path: release-apks
 
       - name: 发布 GitHub Release
