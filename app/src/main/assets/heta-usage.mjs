@@ -35,8 +35,12 @@
  *     读的那一份**，不用 su —— 理由与 heta-status 的共享那份一模一样。
  *
  * 形状（App 侧解析器与端到端断言都以它为准）：
- *   HETA-USAGE-JSON:{"at":…,"sessions":[{"id":"…","at":…,"turns":[{…}],
+ *   HETA-USAGE-JSON:{"at":…,"sessions":[{"id":"…","at":…,"turns":[{…,
+ *     "steps":[{"step":1,"tools":["bash"],"llmMs":…,"toolMs":…,"outputTokens":…,"at":…}]}],
  *     "totals":{…},"context":{…}}]}
+ *
+ * `steps` 是给**轨迹**用的：每一轮里逐步记下用了哪个工具、多久、多少 token。
+ * 只记工具**名字**，不记参数与结果 —— 那些聊天里的工具卡片已经有，写进文件只会变大且多落一份内容。
  */
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -199,6 +203,22 @@ export function apply(ctx) {
     return { entry, key, previous, record }
   }
 
+  /**
+   * 一步的账（轨迹用）：`{ step, tools: [...], llmMs, toolMs, outputTokens, at }`。
+   * 按 step 号找，找不到就建；工具名去重（同一步里同一个工具调两次只记一次名字）。
+   */
+  function stepRecord(record, step) {
+    const key = numberOrUndefined(step) ?? 0
+    if (!Array.isArray(record.steps)) record.steps = []
+    let found = record.steps.find((item) => item.step === key)
+    if (found === undefined) {
+      found = { step: key, tools: [] }
+      record.steps.push(found)
+      record.steps.sort((a, b) => a.step - b.step)
+    }
+    return found
+  }
+
   function commit(entry, key, previous, record) {
     record.at = Date.now()
     entry.turns.set(key, record)
@@ -291,6 +311,14 @@ export function apply(ctx) {
     }
     if (type === 'tool/call') {
       if (typeof data.callId === 'string' && time !== undefined) toolStarts.set(data.callId, time)
+      // 轨迹：这一步用了哪个工具（只记名字）。
+      const call = recordFor(session, data.turn)
+      const step = stepRecord(call.record, data.step)
+      const toolName = typeof data.name === 'string' && data.name !== '' ? data.name : 'tool'
+      if (!step.tools.includes(toolName)) step.tools.push(toolName)
+      step.at = Date.now()
+      commit(call.entry, call.key, call.previous, call.record)
+      publish()
       return
     }
     if (type === 'tool/result') {
@@ -300,7 +328,12 @@ export function apply(ctx) {
       if (started !== undefined && time !== undefined) {
         toolStarts.delete(callId)
         const { entry: owner, key, previous, record } = recordFor(session, data.turn)
-        record.toolMs = (numberOrUndefined(previous?.toolMs) ?? 0) + Math.max(0, time - started)
+        const spent = Math.max(0, time - started)
+        record.toolMs = (numberOrUndefined(previous?.toolMs) ?? 0) + spent
+        // 轨迹：这一步的工具用时也算到这一步上。
+        const step = stepRecord(record, data.step)
+        step.toolMs = (numberOrUndefined(step.toolMs) ?? 0) + spent
+        step.at = Date.now()
         commit(owner, key, previous, record)
         publish()
       }
@@ -321,7 +354,11 @@ export function apply(ctx) {
       const started = stepStarts.get(owner.id)
       stepStarts.delete(owner.id)
       if (started !== undefined && started.turn === data.turn && started.time !== undefined && time !== undefined) {
-        record.llmMs = (numberOrUndefined(previous?.llmMs) ?? 0) + Math.max(0, time - started.time)
+        const spent = Math.max(0, time - started.time)
+        record.llmMs = (numberOrUndefined(previous?.llmMs) ?? 0) + spent
+        const step = stepRecord(record, data.step)
+        step.llmMs = (numberOrUndefined(step.llmMs) ?? 0) + spent
+        step.at = Date.now()
         const first = firstChunkTime(data.stream)
         if (first !== null && first >= started.time) {
           record.ttftMs = (numberOrUndefined(previous?.ttftMs) ?? 0) + Math.max(0, first - started.time)
@@ -331,6 +368,13 @@ export function apply(ctx) {
       }
       if (usage?.outputTokens !== undefined) {
         record.decodeTokens = (numberOrUndefined(previous?.decodeTokens) ?? 0) + usage.outputTokens
+        // 轨迹：这一步的 token 也记到这一步上。
+        const step = stepRecord(record, data.step)
+        step.outputTokens = (numberOrUndefined(step.outputTokens) ?? 0) + usage.outputTokens
+        if (usage.inputTokens !== undefined) {
+          step.inputTokens = (numberOrUndefined(step.inputTokens) ?? 0) + usage.inputTokens
+        }
+        step.at = Date.now()
       }
       commit(owner, key, previous, record)
       publish()
