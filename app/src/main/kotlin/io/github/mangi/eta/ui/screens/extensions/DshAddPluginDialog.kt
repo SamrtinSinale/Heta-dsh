@@ -1,19 +1,22 @@
 package io.github.mangi.eta.ui.screens.extensions
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,28 +25,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.dsh.DshPluginInstaller
 import io.github.mangi.eta.ui.components.EtaWindowDialog
-import io.github.mangi.eta.ui.components.MiuixDialogActions
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * 「添加插件」弹窗 —— 文案与结构照客户端（`dsh-client-ui-plugin-manager`）。
- *
- * 三件事按客户端来：
- *   · 一行输入：包名 / GitHub 仓库地址 / 本地目录路径，下面给一个示例（`dsh-plugin-whale-pet`）；
- *   · 一段**可展开**的「插件安装引导和示例」——客户端那不是外链，是内联的三条示例；
- *   · 安装源两个选项（`npm 官方源` / `中国大陆镜像源`），地址逐字取自客户端源码。
- *
- * 还有两段警示语也照抄（来源可信 / 暂不支持自动更新）——这类话不该我自己另写一套。
- */
+/** 保留包名/仓库/路径、安装引导与安装源，表单不再嵌套填充色块。 */
 @Composable
 internal fun DshAddPluginDialog(
     show: Boolean,
@@ -52,43 +51,45 @@ internal fun DshAddPluginDialog(
     onInstall: (String, DshPluginInstaller.Registry) -> Unit,
 ) {
     if (!show) return
-    var spec by remember { mutableStateOf("") }
-    var registry by remember { mutableStateOf(DshPluginInstaller.Registry.Npmmirror) }
-    var guideExpanded by remember { mutableStateOf(false) }
-    val trimmed = spec.trim()
     EtaWindowDialog(
         show = show,
         title = stringResource(R.string.extensions_add_plugin),
         onDismissRequest = { if (!working) onDismiss() },
     ) {
+        DshAddPluginContent(working = working, onDismiss = onDismiss, onInstall = onInstall)
+    }
+}
+
+@Composable
+internal fun DshAddPluginContent(
+    working: Boolean,
+    onDismiss: () -> Unit,
+    onInstall: (String, DshPluginInstaller.Registry) -> Unit,
+) {
+    var spec by remember { mutableStateOf("") }
+    var registry by remember { mutableStateOf(DshPluginInstaller.Registry.Npmmirror) }
+    var guideExpanded by remember { mutableStateOf(false) }
+    val trimmed = spec.trim()
+    Column(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // 长引导和大字体只滚动表单，取消/安装始终留在滚动区域外。
         Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
                 .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
                 text = stringResource(R.string.extensions_add_plugin_hint),
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            TextField(
-                value = spec,
-                onValueChange = { spec = it },
-                label = stringResource(R.string.extensions_add_plugin_example),
-                singleLine = true,
-                enabled = !working,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            DshPluginSpecField(value = spec, onValueChange = { spec = it }, enabled = !working)
 
-            // 可展开的引导（客户端就是内联的一段，不是外链）
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { guideExpanded = !guideExpanded }
-                    .padding(vertical = 4.dp),
+            DshFlatRow(
+                onClick = { guideExpanded = !guideExpanded },
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
                     text = stringResource(R.string.extensions_add_plugin_guide),
@@ -97,15 +98,13 @@ internal fun DshAddPluginDialog(
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
-                    imageVector = Icons.Rounded.ExpandMore,
+                    imageVector = if (guideExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                     tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
             if (guideExpanded) {
-                // 三条各写一次（不放进 listOf：占位符检查器按"最近的 ( 里的顶层逗号"数实参，
-                // 放 listOf 里会被当成每个键都传了两个参数）。
                 Text(
                     text = stringResource(R.string.extensions_add_plugin_guide_package),
                     style = MiuixTheme.textStyles.footnote2,
@@ -129,38 +128,38 @@ internal fun DshAddPluginDialog(
                 )
             }
 
-            // 安装源（两个地址与文案逐字取自客户端）
             Text(
                 text = stringResource(R.string.extensions_add_plugin_source),
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            DshPluginInstaller.Registry.entries.forEach { option ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = !working) { registry = option }
-                        .padding(vertical = 6.dp),
-                ) {
-                    Text(
-                        text = option.label,
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (option == registry) {
-                        Icon(
-                            imageVector = Icons.Rounded.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MiuixTheme.colorScheme.primary,
+            Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+                DshPluginInstaller.Registry.entries.forEach { option ->
+                    DshFlatRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !working,
+                        selected = option == registry,
+                        onClick = { registry = option },
+                    ) {
+                        Text(
+                            text = option.label,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
                         )
+                        if (option == registry) {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MiuixTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
             }
 
-            // 两段警示语（照抄客户端）
+            // 保留完整提示，不因视觉精简隐藏安装来源与升级限制。
             Text(
                 text = stringResource(R.string.extensions_add_plugin_trust),
                 style = MiuixTheme.textStyles.footnote2,
@@ -171,14 +170,59 @@ internal fun DshAddPluginDialog(
                 style = MiuixTheme.textStyles.footnote2,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-
-            MiuixDialogActions(
-                confirmText = stringResource(R.string.extensions_add_plugin_install),
-                onCancel = { if (!working) onDismiss() },
-                // 空输入或正在装：什么都不做（按钮的 enabled 参数我没核过签名，就不赌了）。
-                onConfirm = { if (trimmed.isNotEmpty() && !working) onInstall(trimmed, registry) },
-            )
-            Spacer(modifier = Modifier.width(2.dp))
         }
+        DshFlatDialogActions(
+            confirmText = stringResource(R.string.extensions_add_plugin_install),
+            onCancel = { if (!working) onDismiss() },
+            onConfirm = { if (trimmed.isNotEmpty() && !working) onInstall(trimmed, registry) },
+            cancelEnabled = !working,
+            confirmEnabled = trimmed.isNotEmpty() && !working,
+        )
     }
+}
+
+/** 单行输入只用下划线提示编辑区域；焦点改变线色，不铺主题色背景。 */
+@Composable
+private fun DshPluginSpecField(value: String, onValueChange: (String) -> Unit, enabled: Boolean) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val colors = MiuixTheme.colorScheme
+    val fieldDescription = stringResource(R.string.extensions_add_plugin_hint)
+    val lineColor = if (focused && enabled) colors.primary else colors.onSurfaceVariantSummary.copy(alpha = 0.35f)
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        singleLine = true,
+        interactionSource = interactionSource,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        textStyle = MiuixTheme.textStyles.body2.copy(
+            color = if (enabled) colors.onSurface else colors.disabledOnSurface,
+        ),
+        cursorBrush = SolidColor(colors.primary),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            .semantics { contentDescription = fieldDescription }
+            .drawBehind {
+                val stroke = if (focused && enabled) 2.dp.toPx() else 1.dp.toPx()
+                val y = size.height - stroke / 2
+                drawLine(lineColor, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
+            },
+        decorationBox = { innerTextField ->
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 14.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (value.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.extensions_add_plugin_example),
+                        style = MiuixTheme.textStyles.body2,
+                        color = colors.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                innerTextField()
+            }
+        },
+    )
 }

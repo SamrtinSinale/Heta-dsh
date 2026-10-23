@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.components.EtaWindowDialog
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -67,12 +66,10 @@ internal fun DshUninstallPluginDialog(
                             .weight(1f)
                             .padding(end = 8.dp),
                     )
-                    TextButton(
+                    DshFlatAction(
                         text = stringResource(R.string.extensions_uninstall),
                         onClick = { if (!working) onUninstall(id) },
-                        minWidth = 0.dp,
-                        minHeight = 34.dp,
-                        cornerRadius = 17.dp,
+                        enabled = !working,
                     )
                 }
             }

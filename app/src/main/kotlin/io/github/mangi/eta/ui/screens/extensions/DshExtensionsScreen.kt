@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -227,62 +228,30 @@ internal fun DshExtensionsScreen(
             return@MiuixScaffoldPage
         }
 
-        // 卸载插件：只列 Heta 自己装过的（账本），点一下卸掉。
-        item(key = "uninstall_plugin") {
-            EtaPreferenceGroup {
-                EtaPreferenceGroupItem(isFirst = true, isLast = true, hasLeading = true) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                store.refreshInstalledPlugins()
-                                showUninstallPlugin = true
-                            }
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.extensions_uninstall_plugin),
-                            style = MiuixTheme.textStyles.body1,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                        )
-                    }
-                }
-            }
-        }
-
-        // 添加插件：一行入口，点开是客户端那个弹窗（包名 / GitHub / 本地目录 + 安装源）。
-        item(key = "add_plugin") {
-            EtaPreferenceGroup {
-                EtaPreferenceGroupItem(isFirst = true, isLast = true, hasLeading = true) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showAddPlugin = true }
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.extensions_add_plugin),
-                            style = MiuixTheme.textStyles.body1,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(
-                            imageVector = Icons.Rounded.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                        )
-                    }
-                }
+        // 操作不是设置分组：不用两层卡片包一行，也不叠加默认按压色块。
+        item(key = "plugin_actions") {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DshFlatAction(
+                    text = stringResource(R.string.extensions_add_plugin),
+                    icon = Icons.Rounded.Add,
+                    emphasized = true,
+                    enabled = !store.working,
+                    modifier = Modifier.weight(1f),
+                    onClick = { showAddPlugin = true },
+                )
+                DshFlatAction(
+                    text = stringResource(R.string.extensions_uninstall_plugin),
+                    icon = Icons.Rounded.Delete,
+                    enabled = !store.working,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        store.refreshInstalledPlugins()
+                        showUninstallPlugin = true
+                    },
+                )
             }
         }
 
